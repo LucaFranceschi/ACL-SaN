@@ -22,4 +22,4 @@ nvidia-smi
 echo SLURM_JOB_NODELIST=$SLURM_JOB_NODELIST
 
 singularity run --nv --bind /home/lfranceschi/repos/ACL-SSL container.sif \
-/home/lfranceschi/repos/ACL-SSL/scripts/19-single_gpu_test_noise.sh $EXPERIMENT_VERSION $PATH_TO_MODEL
+/home/lfranceschi/repos/ACL-SSL/scripts/21-single_gpu_test_noise.sh $EXPERIMENT_VERSION $PATH_TO_MODEL

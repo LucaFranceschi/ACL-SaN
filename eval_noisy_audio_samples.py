@@ -44,9 +44,9 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
     print(f'Testing epoch {epoch}')
 
     ''' Set logging dir '''
-    tensorboard_path = os.path.join(save_path, 'Test_record', model_exp_name, "tensorboard", f'epoch{epoch}')
+    tensorboard_path = os.path.join(save_path, 'Test_record_noisy', model_exp_name, "tensorboard", f'epoch{epoch}')
 
-    viz_dir_template = os.path.join(save_path, 'Visual_results_test', '{}', model_exp_name, f'epoch{epoch}')
+    viz_dir_template = os.path.join(save_path, 'Visual_results_test_noisy', '{}', model_exp_name, f'epoch{epoch}')
 
     ''' Get model '''
     model_conf_file = f'./config/model/{model_name}.yaml'
@@ -107,20 +107,20 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
 
         eval_flickr_agg(module, flickr_dataloader, args, viz_dir_template.format('flickr'), epoch,
             tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
-        # eval_exflickr_agg(module, exflickr_dataloader, args, viz_dir_template.format('exflickr'), epoch,
-        #     tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
-        # eval_avsbench_agg(module, avsms3_dataloader, args, viz_dir_template.format('ms3'), epoch,
-        #     tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
-        # eval_vggss_agg(module, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
-        #     tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
-        # eval_vggsound_agg(module, test_dataloader, args, viz_dir_template.format('vggsound_test'), epoch,
-        #     tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
-        # eval_exvggss_agg(module, exvggss_dataloader, args, viz_dir_template.format('exvggss'), epoch,
-        #     tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
-        # eval_avsbench_agg(module, avss4_dataloader, args, viz_dir_template.format('s4'), epoch,
-        #     tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
-        # eval_avatar_agg(module, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
-        #     tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
+        eval_exflickr_agg(module, exflickr_dataloader, args, viz_dir_template.format('exflickr'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
+        eval_avsbench_agg(module, avsms3_dataloader, args, viz_dir_template.format('ms3'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
+        eval_vggss_agg(module, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
+        eval_vggsound_agg(module, test_dataloader, args, viz_dir_template.format('vggsound_test'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
+        eval_exvggss_agg(module, exvggss_dataloader, args, viz_dir_template.format('exvggss'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
+        eval_avsbench_agg(module, avss4_dataloader, args, viz_dir_template.format('s4'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
+        eval_avatar_agg(module, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, snr=snr)
 
     exit(0)
 
