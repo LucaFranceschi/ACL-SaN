@@ -219,8 +219,8 @@ def eval_vggsound_agg(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    use_amp = False,
-    snr = None
+    snr = None,
+    add_thresholds = {}
 ) -> Dict[str, float]:
     '''
     Evaluate provided model on VGGS (VGG-Sound) test dataset.
@@ -264,7 +264,7 @@ def eval_vggsound_agg(
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
     evaluators = [vggsound_eval.Evaluator() for i in range(len(thrs))]
 
     if snr != None:
@@ -272,7 +272,14 @@ def eval_vggsound_agg(
         # VGGSound does not have original (std) evaluation, so there is nothing to do here
         return {}
 
-    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGGS({test_split}) dataset...")):
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+    heatmap_sil_min_values = []
+    heatmap_sil_max_values = []
+    heatmap_noise_min_values = []
+    heatmap_noise_max_values = []
+
+    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGGS dataset ({test_split})...")):
         images, audios = data['images'], data['audios']
         labels, name = data['labels'], data['ids']
 
@@ -292,6 +299,14 @@ def eval_vggsound_agg(
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
+
+        # Add info for boxplots and threshold evaluation
+        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
@@ -324,6 +339,13 @@ def eval_vggsound_agg(
 
                 draw_overall(result_dir, original_image, heatmap_image, heatmap_image_silence, heatmap_image_noise, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+
+    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+    heatmap_sil_min_values = np.array(heatmap_sil_min_values)
+    heatmap_sil_max_values = np.array(heatmap_sil_max_values)
+    heatmap_noise_min_values = np.array(heatmap_noise_min_values)
+    heatmap_noise_max_values = np.array(heatmap_noise_max_values)
 
     # Save result
     os.makedirs(result_dir, exist_ok=True)
@@ -362,6 +384,109 @@ def eval_vggsound_agg(
 
     return result_dict
 
+@torch.no_grad()
+def eval_vggss_get_thresholds(
+    model: torch.nn.Module,
+    test_dataloader: DataLoader,
+    args,
+    epoch: Optional[int] = None,
+    tensorboard_path: Optional[str] = None,
+    data_path_dict: dict = {},
+    use_cuda = False,
+    snr = None,
+    rank = 0
+) -> Dict[str, float]:
+
+    if snr != None:
+        return {}
+
+    test_split = test_dataloader.dataset.split
+
+    # Get placeholder text
+    prompt_template, text_pos_at_prompt, prompt_length = get_prompt_template()
+
+    real_san_audio_path = data_path_dict['san'] if args.san_real else None
+
+    neg_audios = get_silence_noise_audios(model,
+        test_dataloader.dataset[0]['audios'].shape,
+        True,
+        real_san_audio_path,
+        test_dataloader.dataset.SAMPLE_RATE,
+        test_dataloader.dataset.set_length,
+        use_cuda=use_cuda
+    )
+
+    san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
+
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+    heatmap_sil_min_values = []
+    heatmap_sil_max_values = []
+    heatmap_noise_min_values = []
+    heatmap_noise_max_values = []
+
+    for step, data in enumerate(tqdm(test_dataloader, desc=f"[{epoch}] Evaluating thresholds in VGG-SS dataset ({test_split})...")):
+        images, audios, bboxes = data['images'], data['audios'], data['bboxes']
+        labels, name = data['labels'], data['ids']
+
+        audio_embeddings = {}
+
+        # Inference
+        placeholder_tokens = model.get_placeholder_token(prompt_template.replace('{}', ''))
+        placeholder_tokens = placeholder_tokens.repeat((test_dataloader.batch_size, 1))
+        audio_driven_embedding = model.encode_audio(audios.to(model.device), placeholder_tokens, text_pos_at_prompt,
+                                                    prompt_length)
+
+        audio_embeddings['pred_emb'] = audio_driven_embedding
+
+        audio_embeddings['pred_emb_silence'] = san_dict['pred_emb_san'][0].unsqueeze(0)
+
+        audio_embeddings['pred_emb_noise'] = san_dict['pred_emb_san'][1].unsqueeze(0)
+
+        # Localization result
+        out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
+
+        # Add info for boxplots and threshold evaluation
+        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
+    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+    heatmap_sil_min_values = np.array(heatmap_sil_min_values)
+    heatmap_sil_max_values = np.array(heatmap_sil_max_values)
+    heatmap_noise_min_values = np.array(heatmap_noise_min_values)
+    heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+
+    epoch = 0 if epoch == 'best' else epoch
+
+    if tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min.pkl.{rank}'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max.pkl.{rank}'))
+        heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + f'_sil_min.pkl.{rank}'))
+        heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + f'_sil_max.pkl.{rank}'))
+        heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + f'_noise_min.pkl.{rank}'))
+        heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + f'_noise_max.pkl.{rank}'))
+
+    max_negatives = [heatmap_sil_max_values, heatmap_noise_max_values]
+    max_negatives_separate = [np.percentile(heatmap_sil_max_values, 75), np.percentile(heatmap_noise_max_values, 75)]
+
+    return_thresholds = {
+        'max_neg': np.mean(heatmap_pos_max_values),
+        'max_neg_plus_10': np.mean(heatmap_pos_max_values) * 1.1,
+        'max_q2_pos': np.percentile(heatmap_pos_max_values, 25),
+        'max_q3_all': np.percentile(max_negatives, 75),
+        'max_q3_separate': np.max(max_negatives_separate)
+    }
+
+    print(return_thresholds)
+
+    return return_thresholds
 
 @torch.no_grad()
 def eval_vggss_agg(
@@ -373,8 +498,8 @@ def eval_vggss_agg(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    use_amp = False,
-    snr = None
+    snr = None,
+    add_thresholds = {}
 ) -> Dict[str, float]:
     '''
     Evaluate provided model on VGG-SS (VGG Sound Source) test dataset.
@@ -416,11 +541,14 @@ def eval_vggss_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
     evaluators = [vggss_eval.Evaluator() for i in range(len(thrs))]
 
-    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGG-SS({test_split}) dataset...")):
+    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGG-SS dataset ({test_split})...")):
         images, audios, bboxes = data['images'], data['audios'], data['bboxes']
         labels, name = data['labels'], data['ids']
 
@@ -441,6 +569,10 @@ def eval_vggss_agg(
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
+
+        if snr != None:
+            heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
@@ -464,6 +596,17 @@ def eval_vggss_agg(
 
             draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+
+    # only these two because non-snr are already computed by eval_vggss_get_thresholds
+    if snr != None:
+        heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+        heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+
+        if tensorboard_path is not None and epoch is not None:
+            numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+            os.makedirs(numpy_path, exist_ok=True)
+            heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{snr}.pkl'))
+            heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{snr}.pkl'))
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -523,8 +666,8 @@ def eval_avsbench_agg(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    use_amp = False,
-    snr = None
+    snr = None,
+    add_thresholds = {}
 ) -> None:
     '''
     Evaluate provided  model on AVSBench (S4, MS3) test dataset.
@@ -566,11 +709,18 @@ def eval_avsbench_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+    heatmap_sil_min_values = []
+    heatmap_sil_max_values = []
+    heatmap_noise_min_values = []
+    heatmap_noise_max_values = []
+
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
     evaluators = [avsbench_eval.Evaluator() for i in range(len(thrs))]
 
-    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate AVSBench dataset({test_split})...")):
+    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate AVSBench dataset ({test_split})...")):
         images, audios, gts, labels, name = data['images'], data['audios'], data['gts'], data['labels'], data['ids']
 
         audio_embeddings = {}
@@ -590,6 +740,16 @@ def eval_avsbench_agg(
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
+
+        # Add info for boxplots and threshold evaluation
+        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
+        if snr == None:
+            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
@@ -614,6 +774,27 @@ def eval_avsbench_agg(
 
             draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+
+    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+
+    if snr == None:
+        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
+        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
+        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
+        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+
+    if tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+
+        if snr == None:
+            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
+            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
+            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
+            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -662,8 +843,8 @@ def eval_flickr_agg(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    use_amp = False,
-    snr = None
+    snr = None,
+    add_thresholds = {}
 ) -> None:
     '''
     Evaluate provided  model on AVSBench (S4, MS3) test dataset.
@@ -705,8 +886,15 @@ def eval_flickr_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+    heatmap_sil_min_values = []
+    heatmap_sil_max_values = []
+    heatmap_noise_min_values = []
+    heatmap_noise_max_values = []
+
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
     evaluators = [flickr_eval.Evaluator() for i in range(len(thrs))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc="Evaluate Flickr dataset...")):
@@ -731,6 +919,16 @@ def eval_flickr_agg(
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
+        # Add info for boxplots and threshold evaluation
+        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
+        if snr == None:
+            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
             evaluators[i].evaluate_batch(**out_dict, target=bboxes, thr=thr)
@@ -753,6 +951,27 @@ def eval_flickr_agg(
 
             draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+
+    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+
+    if snr == None:
+        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
+        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
+        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
+        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+
+    if tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+
+        if snr == None:
+            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
+            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
+            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
+            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -800,8 +1019,8 @@ def eval_exvggss_agg(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    use_amp = False,
-    snr = None
+    snr = None,
+    add_thresholds = {}
 ) -> None:
     '''
     Evaluate provided  model on AVSBench (S4, MS3) test dataset.
@@ -841,11 +1060,18 @@ def eval_exvggss_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+    heatmap_sil_min_values = []
+    heatmap_sil_max_values = []
+    heatmap_noise_min_values = []
+    heatmap_noise_max_values = []
+
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
     evaluators = [exvggss_eval.Evaluator() for i in range(len(thrs))]
 
-    for step, data in enumerate(tqdm(test_dataloader, desc="Evaluate Extend VGG-SS dataset...")):
+    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate Extend VGG-SS dataset ({test_split})...")):
         images, audios, bboxes,  = data['images'], data['audios'], data['bboxes']
         labels, name = data['labels'], data['ids']
 
@@ -867,6 +1093,16 @@ def eval_exvggss_agg(
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
+        # Add info for boxplots and threshold evaluation
+        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
+        if snr == None:
+            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
         # Calculate confidence value for extended dataset
         v_f = model.encode_masked_vision(images.to(model.device), audio_driven_embedding)[0]
         ind = torch.arange(test_dataloader.batch_size).to(images.device)
@@ -875,6 +1111,27 @@ def eval_exvggss_agg(
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
             evaluators[i].evaluate_batch(**out_dict, gt=bboxes, label=labels, conf=confs, name=name, thr=thr)
+
+    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+
+    if snr == None:
+        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
+        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
+        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
+        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+
+    if tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+
+        if snr == None:
+            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
+            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
+            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
+            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -923,8 +1180,8 @@ def eval_exflickr_agg(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    use_amp = False,
-    snr = None
+    snr = None,
+    add_thresholds = {}
 ) -> None:
     '''
     Evaluate provided  model on AVSBench (S4, MS3) test dataset.
@@ -964,11 +1221,18 @@ def eval_exflickr_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+    heatmap_sil_min_values = []
+    heatmap_sil_max_values = []
+    heatmap_noise_min_values = []
+    heatmap_noise_max_values = []
+
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
     evaluators = [exflickr_eval.Evaluator() for i in range(len(thrs))]
 
-    for step, data in enumerate(tqdm(test_dataloader, desc="Evaluate Extend Flickr dataset...")):
+    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate Extend Flickr dataset ({test_split})...")):
         images, audios, bboxes,  = data['images'], data['audios'], data['bboxes']
         labels, name = data['labels'], data['ids']
 
@@ -990,6 +1254,16 @@ def eval_exflickr_agg(
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
+        # Add info for boxplots and threshold evaluation
+        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
+        if snr == None:
+            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
         # Calculate confidence value for extended dataset
         v_f = model.encode_masked_vision(images.to(model.device), audio_driven_embedding)[0]
         ind = torch.arange(test_dataloader.batch_size).to(images.device)
@@ -998,6 +1272,27 @@ def eval_exflickr_agg(
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
             evaluators[i].evaluate_batch(**out_dict, gt=bboxes, label=labels, conf=confs, name=name, thr=thr)
+
+    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+
+    if snr == None:
+        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
+        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
+        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
+        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+
+    if tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+
+        if snr == None:
+            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
+            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
+            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
+            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -1063,8 +1358,8 @@ def eval_avatar_agg(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    use_amp = False,
-    snr = None
+    snr = None,
+    add_thresholds = {}
 ) -> None:
     '''
     Evaluate provided  model on AVATAR test dataset.
@@ -1135,12 +1430,19 @@ def eval_avatar_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
+    heatmap_pos_min_values = []
+    heatmap_pos_max_values = []
+    heatmap_sil_min_values = []
+    heatmap_sil_max_values = []
+    heatmap_noise_min_values = []
+    heatmap_noise_max_values = []
+
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
     evaluators_seg = [avatar_eval.Evaluator() for i in range(len(thrs))]
     evaluators_bb = [avatar_eval.Evaluator() for i in range(len(thrs))]
 
-    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate AVATAR dataset({test_split})...")):
+    for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate AVATAR dataset ({test_split})...")):
         images, audios, gts, name = data['images'], data['audios'], data['gts'], data['ids']
 
         audio_embeddings = {}
@@ -1160,6 +1462,16 @@ def eval_avatar_agg(
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
+
+        # Add info for boxplots and threshold evaluation
+        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+
+        if snr == None:
+            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
 
         # Evaluation for all thresholds
         target = torch.zeros_like(out_dict['heatmap'])
@@ -1201,6 +1513,27 @@ def eval_avatar_agg(
 
             draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+
+    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
+    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+
+    if snr == None:
+        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
+        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
+        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
+        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+
+    if tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+
+        if snr == None:
+            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
+            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
+            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
+            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
 
     epoch = 0 if epoch == 'best' else epoch
 

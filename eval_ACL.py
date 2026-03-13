@@ -86,7 +86,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
     avsms3_dataloader = torch.utils.data.DataLoader(avsms3_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                     pin_memory=False, drop_last=True)
 
-    avatar_dataset = AVATARDataset(data_path_dict['avatar'], 'one', is_train=False, input_resolution=args.input_resolution)
+    avatar_dataset = AVATARDataset(data_path_dict['avatar'], 'avatar_one', is_train=False, input_resolution=args.input_resolution)
     avatar_dataloader = torch.utils.data.DataLoader(avatar_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                     pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
 
@@ -132,22 +132,24 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
 
         module.train(False)
 
-        eval_flickr_agg(module, flickr_dataloader, args, viz_dir_template.format('flickr'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA)
-        eval_exflickr_agg(module, exflickr_dataloader, args, viz_dir_template.format('exflickr'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA)
-        eval_avsbench_agg(module, avsms3_dataloader, args, viz_dir_template.format('ms3'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA)
+        thresholds = eval_vggss_get_thresholds(module, vggss_dataloader, args, epoch, tensorboard_path, data_path_dict, USE_CUDA, rank=rank)
+
         result_dict = eval_vggss_agg(module, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA)
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
+        eval_flickr_agg(module, flickr_dataloader, args, viz_dir_template.format('flickr'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
+        eval_exflickr_agg(module, exflickr_dataloader, args, viz_dir_template.format('exflickr'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
+        eval_avsbench_agg(module, avsms3_dataloader, args, viz_dir_template.format('ms3'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
         eval_vggsound_agg(module, test_dataloader, args, viz_dir_template.format('vggsound_test'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA)
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
         eval_exvggss_agg(module, exvggss_dataloader, args, viz_dir_template.format('exvggss'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA)
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
         eval_avsbench_agg(module, avss4_dataloader, args, viz_dir_template.format('s4'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA)
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
         eval_avatar_agg(module, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
-              tensorboard_path, data_path_dict, USE_CUDA)
+              tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)
 
         if result_dict['best_AUC'][0] > best_scores['best_AUC']['AUC']:
             best_scores['best_AUC']['epoch'] = epoch
