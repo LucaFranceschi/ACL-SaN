@@ -477,8 +477,8 @@ def eval_vggss_get_thresholds(
     max_negatives_separate = [np.percentile(heatmap_sil_max_values, 75), np.percentile(heatmap_noise_max_values, 75)]
 
     return_thresholds = {
-        'max_neg': np.mean(heatmap_pos_max_values),
-        'max_neg_plus_10': np.mean(heatmap_pos_max_values) * 1.1,
+        'max_neg': np.mean(max_negatives),
+        'max_neg_plus_10': np.mean(max_negatives) * 1.1,
         'max_q2_pos': np.percentile(heatmap_pos_max_values, 25),
         'max_q3_all': np.percentile(max_negatives, 75),
         'max_q3_separate': np.max(max_negatives_separate)
@@ -787,8 +787,8 @@ def eval_avsbench_agg(
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
         if snr == None:
             heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
@@ -964,8 +964,8 @@ def eval_flickr_agg(
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
         if snr == None:
             heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
@@ -1124,8 +1124,8 @@ def eval_exvggss_agg(
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
         if snr == None:
             heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
@@ -1285,8 +1285,8 @@ def eval_exflickr_agg(
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
         if snr == None:
             heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
@@ -1526,8 +1526,8 @@ def eval_avatar_agg(
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
+        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
         if snr == None:
             heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
