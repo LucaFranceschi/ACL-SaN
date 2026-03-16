@@ -103,7 +103,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
         avsms3_dataloader = torch.utils.data.DataLoader(avsms3_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                         pin_memory=False, drop_last=True)
 
-        avatar_dataset = AVATARDataset(data_path_dict['avatar'], 'one', is_train=False, input_resolution=args.input_resolution, eval_snr=snr)
+        avatar_dataset = AVATARDataset(data_path_dict['avatar'], 'avatar_one', is_train=False, input_resolution=args.input_resolution, eval_snr=snr)
         avatar_dataloader = torch.utils.data.DataLoader(avatar_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                         pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
 
