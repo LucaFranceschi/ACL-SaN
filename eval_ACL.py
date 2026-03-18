@@ -110,6 +110,8 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
     }
 
     for epoch in epoch_list:
+        # if epoch not in [16, 18, 19]:
+        #     continue
         print(f'Testing epoch {epoch}')
 
         ''' Set logging dir '''
@@ -166,8 +168,10 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
             best_scores['best_AUC_N_noise']['AUC'] = result_dict['best_AUC_noise'][0]
             best_scores['best_AUC_N_noise']['thr'] = result_dict['best_AUC_noise'][1]
 
+        if USE_DDP:
+            dist.barrier()
+
     print(best_scores)
-    exit(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -201,5 +205,3 @@ if __name__ == "__main__":
     USE_DDP = True if NUM_GPUS > 1 else False
 
     main(args.model_name, args.model_path, args.train_config, data_path, args.save_path)
-
-    exit(1)
