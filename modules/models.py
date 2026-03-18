@@ -396,59 +396,10 @@ class ACL(nn.Module):
 
 class ADCL(ACL):
     '''
-    Audio-DeGrounded Contrastive Learning (ACL) model.
+    Audio-DeGrounded Contrastive Learning (ACL) model. Simplest way I could find to evaluate decoder.
     '''
     def _forward_decoder(self, image: torch.Tensor, embedding: torch.Tensor) -> torch.Tensor:
         v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
 
         logits = torch.einsum('bchw,bc->bhw', F.normalize(v_d), F.normalize(embedding))
-        return
-
-    def forward(self, image: torch.Tensor, pred_emb: torch.Tensor, resolution: int = 224, **kwargs) -> dict:
-        if self.training:
-            raise NotImplementedError
-            # basically forward for silence audio
-            pred_emb_sil = kwargs.get('pred_emb_silence', None)
-            out_dict_sil = {}
-            if pred_emb_sil != None:
-                sil_v_f, sil_v_i, sil_p_area, sil_n_area = self.encode_masked_vision(image, pred_emb_sil.repeat(pred_emb.shape[0], 1))
-                out_dict_sil = {'sil_v_f': sil_v_f, 'sil_v_i': sil_v_i, 'sil_p_area': sil_p_area, 'sil_n_area': sil_n_area}
-
-            # basically forward for noise audio (only gaussian noise)
-            pred_emb_noise = kwargs.get('pred_emb_noise', None)
-            out_dict_noise = {}
-            if pred_emb_noise != None:
-                noise_v_f, noise_v_i, noise_p_area, noise_n_area = self.encode_masked_vision(image, pred_emb_noise.repeat(pred_emb.shape[0], 1))
-                out_dict_noise = {'noise_v_f': noise_v_f, 'noise_v_i': noise_v_i, 'noise_p_area': noise_p_area, 'noise_n_area': noise_n_area}
-
-            # forward for noisy audio (original + noise)
-            pred_emb_noisy = kwargs.get('pred_emb_noisy', None)
-            out_dict_noisy = {}
-            if pred_emb_noisy != None:
-                noisy_v_f, noisy_v_i, noisy_p_area, noisy_n_area = self.encode_masked_vision(image, pred_emb_noisy)
-                out_dict_noisy = {'noisy_v_f': noisy_v_f, 'noisy_v_i': noisy_v_i, 'noisy_p_area': noisy_p_area, 'noisy_n_area': noisy_n_area}
-
-            # finally forward for original audios
-            # seg_logit = self.forward_module(image, pred_emb, resolution)
-            v_f, v_i, p_area, n_area = self.encode_masked_vision(image, pred_emb)
-            out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
-
-        else:
-            seg_logit = self.forward_module(image, pred_emb, resolution)
-
-            out_dict = {'heatmap': seg_logit}
-
-            pred_emb_sil = kwargs.get('pred_emb_silence', None)
-            if pred_emb_sil != None:
-                seg_logit = self.forward_module(image, pred_emb_sil.repeat(pred_emb.shape[0], 1), resolution)
-                out_dict = {**out_dict, 'sil_heatmap': seg_logit}
-
-            pred_emb_noise = kwargs.get('pred_emb_noise', None)
-            if pred_emb_noise != None:
-                seg_logit = self.forward_module(image, pred_emb_noise.repeat(pred_emb.shape[0], 1), resolution)
-                out_dict = {**out_dict, 'noise_heatmap': seg_logit}
-
-        return out_dict
-
-    # def encode_masked_vision(self, image, embedding):
-    #     return
+        return logits
