@@ -219,6 +219,32 @@ class ACL(nn.Module):
 
         return logits
 
+    def forward_module_eval(self, image: torch.Tensor, embedding: torch.Tensor, resolution: int = 224,
+                       force_comb: bool = False) -> torch.Tensor:
+        '''
+        Same spirit as forward_module but returns more things for evaluation purposes.
+        '''
+        B, c, h, w = image.shape
+
+        if embedding.shape[0] != image.shape[0] and embedding.shape[0] == 1:
+            raise NotImplementedError
+        elif embedding.shape[0] != image.shape[0] and embedding.shape[0] != 1 and image.shape[0] != 1 or force_comb:
+            raise NotImplementedError
+        # N image, N embedding or 1 image, N embedding
+
+        v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
+        v_d_logits = torch.einsum('bchw,bc->bhw', F.normalize(v_d), F.normalize(embedding))
+        # i cannot return logits from this! i need 0-1 values. use masker_i it basically is a sigmoid with learnt b and w?
+
+        seg_logit = self.forward_decoder(image, embedding, resolution) # M^G: [B, h, w]
+        image_mask = self.masker_i(seg_logit, infer=True) # this is the "heatmap", basically a sigmoid of seg_logit
+
+        v_i_bp = self.av_grounder.get_pixels(image * image_mask) # v^i before pooling: [B, c, h, w]
+        v_i_logits = torch.einsum('bchw,bc->bhw', F.normalize(v_i_bp), F.normalize(embedding))
+        # i cannot return logits from this! i need 0-1 values. use masker_i it basically is a sigmoid with learnt b and w?
+
+        return v_d_logits, image_mask, v_i_logits
+
     def _vision_impl(self, pixel_values):
         """
         Helper to run just the vision model.
@@ -256,12 +282,12 @@ class ACL(nn.Module):
 
         # Feature level masker
         feature_mask = F.interpolate(self.masker_f(clipseg_mask), maskclip_feat.shape[2])
+        norm_feat_mask = feature_mask.sum(dim=(-2,-1)).clamp(1e-6).unsqueeze(-1) # [B, N, 1]
+        feature_masked_emb = torch.einsum('bchw,bnhw->bnc', maskclip_feat, feature_mask) / norm_feat_mask
 
         # Image level masker
         ind = torch.arange(B).to(image.device)
         image_mask = self.masker_i(clipseg_mask[ind, ind].unsqueeze(1))  # Positive pair only
-        norm_feat_mask = feature_mask.sum(dim=(-2,-1)).clamp(1e-6).unsqueeze(-1) # [B, N, 1]
-        feature_masked_emb = torch.einsum('bchw,bnhw->bnc', maskclip_feat, feature_mask) / norm_feat_mask
 
         # step 1: forward the query images through the frozen CLIP vision encoder
         masked_vision_outputs_pooled = checkpoint(self._vision_impl, image * image_mask, use_reentrant=False)
@@ -306,11 +332,11 @@ class ACL(nn.Module):
                 out_dict_noisy = {'noisy_v_f': noisy_v_f, 'noisy_v_i': noisy_v_i, 'noisy_p_area': noisy_p_area, 'noisy_n_area': noisy_n_area}
 
             # finally forward for original audios
-            # seg_logit = self.forward_module(image, pred_emb, resolution)
             v_f, v_i, p_area, n_area = self.encode_masked_vision(image, pred_emb)
             out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
 
         else:
+            ##### HERE!! SWAP THIS forward_module for forward_module_eval and use it in eval code
             seg_logit = self.forward_module(image, pred_emb, resolution)
             heatmap = self.masker_i(seg_logit, infer=True)
 
@@ -362,10 +388,10 @@ class ACL(nn.Module):
             out_dict_noisy = {'noisy_v_f': noisy_v_f, 'noisy_v_i': noisy_v_i, 'noisy_p_area': noisy_p_area, 'noisy_n_area': noisy_n_area}
 
         # finally forward for original audios
-        # seg_logit = self.forward_module(image, pred_emb, resolution)
         v_f, v_i, p_area, n_area = self.encode_masked_vision(image, pred_emb)
         out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
 
+        ##### SAME HERE OFC
         seg_logit = self.forward_module(image, pred_emb, resolution)
         heatmap = self.masker_i(seg_logit, infer=True)
 
