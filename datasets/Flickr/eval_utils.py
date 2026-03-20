@@ -50,7 +50,7 @@ class Evaluator(object):
         """
         self._evaluate_batch(heatmap, 'std', thr, target)
 
-        sil_heatmap = kwargs.get('sil_heatmap', None)
+        sil_heatmap = kwargs.get('silence_heatmap', None)
         if sil_heatmap != None:
             self._evaluate_batch(sil_heatmap, 'sil', thr, target)
 

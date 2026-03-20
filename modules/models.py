@@ -173,7 +173,7 @@ class ACL(nn.Module):
         Returns:
             torch.Tensor: Logits from the decoder.
         """
-        logits = checkpoint(self._forward_decoder, image, embedding, use_reentrant=False)
+        logits = checkpoint(self._forward_decoder, image, embedding, use_reentrant=False) # [B, h, w]
 
         if logits.ndim == 2:
             logits = logits.unsqueeze(0).unsqueeze(1)
@@ -184,7 +184,7 @@ class ACL(nn.Module):
         if (h, w) != (resolution, resolution):
             logits = F.interpolate(logits, resolution, mode='bicubic')
 
-        return logits
+        return logits # [B, 1, h, w]
 
     def forward_module(self, image: torch.Tensor, embedding: torch.Tensor, resolution: int = 224,
                        force_comb: bool = False) -> torch.Tensor:
@@ -224,26 +224,40 @@ class ACL(nn.Module):
         '''
         Same spirit as forward_module but returns more things for evaluation purposes.
         '''
-        B, c, h, w = image.shape
-
+        B, c, h, w = image.shape # [B, 3, 352, 352]
+        print(f'{image.shape=}')
         if embedding.shape[0] != image.shape[0] and embedding.shape[0] == 1:
-            raise NotImplementedError
+            raise NotImplementedError('forward_module_eval is not meant to be used during training!')
         elif embedding.shape[0] != image.shape[0] and embedding.shape[0] != 1 and image.shape[0] != 1 or force_comb:
-            raise NotImplementedError
+            raise NotImplementedError('forward_module_eval is not meant to be used during training!')
         # N image, N embedding or 1 image, N embedding
 
-        v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
-        v_d_logits = torch.einsum('bchw,bc->bhw', F.normalize(v_d), F.normalize(embedding))
-        # i cannot return logits from this! i need 0-1 values. use masker_i it basically is a sigmoid with learnt b and w?
+        embedding = F.normalize(embedding) # [B, C]
 
-        seg_logit = self.forward_decoder(image, embedding, resolution) # M^G: [B, h, w]
-        image_mask = self.masker_i(seg_logit, infer=True) # this is the "heatmap", basically a sigmoid of seg_logit
+        v_d = self.av_grounder.get_pixels(image) # v^D: [B, C, h, w] // [16, 512, 22, 22]
+        v_d_sim = torch.einsum('bchw,bc->bhw', F.normalize(v_d), embedding) # cosine similarity --> range [-1, 1] // [16, 22, 22]
+        v_d_seg = (v_d_sim + 1) / 2 # rescaled to range [0, 1]
+
+        seg_logit = self.forward_decoder(image, embedding, h) # M^G: [B, 1, h, w] // [16, 1, 352, 352]
+        image_mask = self.masker_i(seg_logit, infer=True) # this is the "heatmap", basically a sigmoid of seg_logit // [16, 1, 352, 352]
+        # i believe this image_mask has range [0, 1]
 
         v_i_bp = self.av_grounder.get_pixels(image * image_mask) # v^i before pooling: [B, c, h, w]
-        v_i_logits = torch.einsum('bchw,bc->bhw', F.normalize(v_i_bp), F.normalize(embedding))
-        # i cannot return logits from this! i need 0-1 values. use masker_i it basically is a sigmoid with learnt b and w?
+        v_i_sim = torch.einsum('bchw,bc->bhw', F.normalize(v_i_bp), embedding) # cosine similarity --> range [-1, 1]
+        v_i_seg = (v_i_sim + 1) / 2 # rescaled to range [0, 1]
 
-        return v_d_logits, image_mask, v_i_logits
+        masked_vision_outputs_pooled = checkpoint(self._vision_impl, image * image_mask, use_reentrant=False)
+        masked_image_emb = self.av_grounder.clip.visual_projection(masked_vision_outputs_pooled)
+        v_f_sim = (torch.einsum('bc,bc->b', F.normalize(masked_image_emb), embedding) + 1) / 2 # cosine sim + rescaling to [0, 1]
+        v_f_sim = v_f_sim.unsqueeze(1) # to make min/max operations the same otherwise [B] --> [1]
+
+        # these are the values that I will have to store min/max values for boxplots
+        return {
+            'v_d_seg': v_d_seg,
+            'm_i_seg': image_mask,
+            'v_i_seg': v_i_seg,
+            'v_f_sim': v_f_sim
+        }
 
     def _vision_impl(self, pixel_values):
         """
@@ -336,21 +350,16 @@ class ACL(nn.Module):
             out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
 
         else:
-            ##### HERE!! SWAP THIS forward_module for forward_module_eval and use it in eval code
-            seg_logit = self.forward_module(image, pred_emb, resolution)
-            heatmap = self.masker_i(seg_logit, infer=True)
-
-            out_dict = {'heatmap': heatmap}
+            out_dict = {}
+            out_dict['positive'] = self.forward_module_eval(image, pred_emb, resolution)
 
             pred_emb_sil = kwargs.get('pred_emb_silence', None)
             if pred_emb_sil != None:
-                seg_logit = self.forward_module(image, pred_emb_sil.repeat(pred_emb.shape[0], 1), resolution)
-                out_dict = {**out_dict, 'sil_heatmap': self.masker_i(seg_logit, infer=True)}
+                out_dict['silence'] = self.forward_module_eval(image, pred_emb_sil.repeat(pred_emb.shape[0], 1), resolution)
 
             pred_emb_noise = kwargs.get('pred_emb_noise', None)
             if pred_emb_noise != None:
-                seg_logit = self.forward_module(image, pred_emb_noise.repeat(pred_emb.shape[0], 1), resolution)
-                out_dict = {**out_dict, 'noise_heatmap': self.masker_i(seg_logit, infer=True)}
+                out_dict['noise'] = self.forward_module_eval(image, pred_emb_noise.repeat(pred_emb.shape[0], 1), resolution)
 
         return out_dict
 
@@ -391,7 +400,6 @@ class ACL(nn.Module):
         v_f, v_i, p_area, n_area = self.encode_masked_vision(image, pred_emb)
         out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
 
-        ##### SAME HERE OFC
         seg_logit = self.forward_module(image, pred_emb, resolution)
         heatmap = self.masker_i(seg_logit, infer=True)
 

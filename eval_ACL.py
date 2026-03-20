@@ -31,6 +31,8 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
         torch.cuda.set_device(rank)
         world_size = dist.get_world_size()
         print(f'World size: {world_size}') if rank == 0 else None
+    else:
+        rank = 0
 
     device = torch.device('cuda', torch.cuda.current_device()) if USE_CUDA else torch.device('cpu')
     print(f'Device: {device} is used\n')
@@ -134,7 +136,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
 
         module.train(False)
 
-        thresholds = eval_vggss_get_thresholds(module, vggss_dataloader, args, epoch, tensorboard_path, data_path_dict, USE_CUDA, rank=rank)
+        thresholds = eval_vggss_get_thresholds(module, vggss_dataloader, args, epoch, tensorboard_path, data_path_dict, USE_CUDA)
 
         result_dict = eval_vggss_agg(module, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
             tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds)

@@ -33,6 +33,7 @@ import torch.nn.functional as F
 
 import wandb
 import sys
+from copy import deepcopy
 
 @torch.no_grad()
 def eval_vggsound_validation(
@@ -158,7 +159,7 @@ def eval_vggsound_validation(
         # Visual results
         for j in range(val_dataloader.batch_size):
             seg = out_dict['heatmap'][j:j+1].detach()
-            seg_image = ((1 - seg.squeeze().cpu().numpy()) * 255).astype(np.uint8)
+            seg_image = ((seg.squeeze().cpu().numpy()) * 255).astype(np.uint8)
 
             os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
             cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
@@ -272,12 +273,17 @@ def eval_vggsound_agg(
         # VGGSound does not have original (std) evaluation, so there is nothing to do here
         return {}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
-    heatmap_sil_min_values = []
-    heatmap_sil_max_values = []
-    heatmap_noise_min_values = []
-    heatmap_noise_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template),
+        'silence': deepcopy(outputs_template),
+        'noise': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template),
+        'silence': deepcopy(outputs_template),
+        'noise': deepcopy(outputs_template)
+    }
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGGS dataset ({test_split})...")):
         images, audios = data['images'], data['audios']
@@ -301,21 +307,28 @@ def eval_vggsound_agg(
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
         # Add info for boxplots and threshold evaluation
-        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
         # Evaluation for all thresholds
+        heatmaps = {
+            'heatmap': out_dict['positive']['m_i_seg'],
+            'silence_heatmap': out_dict['silence']['m_i_seg'],
+            'noise_heatmap': out_dict['noise']['m_i_seg']
+        }
+
         for i, thr in enumerate(thrs):
-            evaluators[i].evaluate_batch(**out_dict, thr=thr)
+            evaluators[i].evaluate_batch(**heatmaps, thr=thr)
 
         # Visual results
         for j in range(test_dataloader.batch_size):
-            seg = out_dict['heatmap'][j:j+1]
-            seg_image = ((1 - seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+            seg = heatmaps['heatmap'][j:j+1]
+            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
             os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
             cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
@@ -324,28 +337,37 @@ def eval_vggsound_agg(
         for j in range(test_dataloader.batch_size):
             original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
 
-            seg = out_dict['heatmap'][j:j+1]
-            seg_image = ((1 - seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+            seg = heatmaps['heatmap'][j:j+1]
+            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
             heatmap_image = Image.fromarray(seg_image)
 
-            if 'sil_heatmap' in out_dict and 'noise_heatmap' in out_dict:
-                seg = out_dict['sil_heatmap'][j:j+1]
-                seg_image = ((1 - seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+            if 'silence_heatmap' in heatmaps and 'noise_heatmap' in heatmaps:
+                seg = heatmaps['silence_heatmap'][j:j+1]
+                seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
                 heatmap_image_silence = Image.fromarray(seg_image)
 
-                seg = out_dict['noise_heatmap'][j:j+1]
-                seg_image = ((1 - seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+                seg = heatmaps['noise_heatmap'][j:j+1]
+                seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
                 heatmap_image_noise = Image.fromarray(seg_image)
 
                 draw_overall(result_dir, original_image, heatmap_image, heatmap_image_silence, heatmap_image_noise, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
-    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
-    heatmap_sil_min_values = np.array(heatmap_sil_min_values)
-    heatmap_sil_max_values = np.array(heatmap_sil_max_values)
-    heatmap_noise_min_values = np.array(heatmap_noise_min_values)
-    heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+    if tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
+
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
 
     # Save result
     os.makedirs(result_dir, exist_ok=True)
@@ -393,8 +415,7 @@ def eval_vggss_get_thresholds(
     tensorboard_path: Optional[str] = None,
     data_path_dict: dict = {},
     use_cuda = False,
-    snr = None,
-    rank = 0
+    snr = None
 ) -> Dict[str, float]:
 
     if snr != None:
@@ -418,12 +439,17 @@ def eval_vggss_get_thresholds(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
-    heatmap_sil_min_values = []
-    heatmap_sil_max_values = []
-    heatmap_noise_min_values = []
-    heatmap_noise_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template),
+        'silence': deepcopy(outputs_template),
+        'noise': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template),
+        'silence': deepcopy(outputs_template),
+        'noise': deepcopy(outputs_template)
+    }
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"[{epoch}] Evaluating thresholds in VGG-SS dataset ({test_split})...")):
         images, audios, bboxes = data['images'], data['audios'], data['bboxes']
@@ -446,42 +472,39 @@ def eval_vggss_get_thresholds(
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
-        # Add info for boxplots and threshold evaluation
-        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
-    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
-    heatmap_sil_min_values = np.array(heatmap_sil_min_values)
-    heatmap_sil_max_values = np.array(heatmap_sil_max_values)
-    heatmap_noise_min_values = np.array(heatmap_noise_min_values)
-    heatmap_noise_max_values = np.array(heatmap_noise_max_values)
-
-    epoch = 0 if epoch == 'best' else epoch
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min.pkl.{rank}'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max.pkl.{rank}'))
-        heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + f'_sil_min.pkl.{rank}'))
-        heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + f'_sil_max.pkl.{rank}'))
-        heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + f'_noise_min.pkl.{rank}'))
-        heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + f'_noise_max.pkl.{rank}'))
 
-    max_negatives = [heatmap_sil_max_values, heatmap_noise_max_values]
-    max_negatives_separate = [np.percentile(heatmap_sil_max_values, 75), np.percentile(heatmap_noise_max_values, 75)]
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
+
+    max_negatives = [outputs_max['silence']['m_i_seg'], outputs_max['noise']['m_i_seg']]
+    max_negatives_separate = [np.percentile(outputs_max['silence']['m_i_seg'], 75), np.percentile(outputs_max['noise']['m_i_seg'], 75)]
 
     return_thresholds = {
         'max_neg': np.mean(max_negatives),
         'max_neg_plus_10': np.mean(max_negatives) * 1.1,
-        'max_q2_pos': np.percentile(heatmap_pos_max_values, 25),
         'max_q3_all': np.percentile(max_negatives, 75),
-        'max_q3_separate': np.max(max_negatives_separate)
+        'max_q2_pos': np.percentile(outputs_max['positive']['m_i_seg'], 25),
+        'max_q3_separate': np.amax(max_negatives_separate)
     }
 
     print(return_thresholds)
@@ -541,8 +564,13 @@ def eval_vggss_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template)
+    }
 
     # Thresholds for evaluation
     thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
@@ -570,18 +598,30 @@ def eval_vggss_agg(
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
-        if snr != None:
-            heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        heatmaps = {
+            'heatmap': out_dict['positive']['m_i_seg']
+        }
+
+        if snr == None:
+            heatmaps['silence_heatmap'] = out_dict['silence']['m_i_seg']
+            heatmaps['noise_heatmap'] = out_dict['noise']['m_i_seg']
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
-            evaluators[i].evaluate_batch(**out_dict, target=bboxes, thr=thr)
+            evaluators[i].evaluate_batch(**heatmaps, target=bboxes, thr=thr)
 
         # Visual results
         for j in range(test_dataloader.batch_size):
-            seg = out_dict['heatmap'][j:j+1]
-            seg_image = ((1 - seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+            seg = heatmaps['heatmap'][j:j+1]
+            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
             os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
             cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
@@ -598,15 +638,21 @@ def eval_vggss_agg(
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
     # only these two because non-snr are already computed by eval_vggss_get_thresholds
-    if snr != None:
-        heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-        heatmap_pos_max_values = np.array(heatmap_pos_max_values)
+    if snr != None and tensorboard_path is not None and epoch is not None:
+        numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
+        os.makedirs(numpy_path, exist_ok=True)
 
-        if tensorboard_path is not None and epoch is not None:
-            numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
-            os.makedirs(numpy_path, exist_ok=True)
-            heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min_snr{snr}.pkl'))
-            heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max_snr{snr}.pkl'))
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max_snr{snr}'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min_snr{snr}'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -709,12 +755,18 @@ def eval_avsbench_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
-    heatmap_sil_min_values = []
-    heatmap_sil_max_values = []
-    heatmap_noise_min_values = []
-    heatmap_noise_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template)
+    }
+    if snr == None:
+        outputs_max['silence'] = deepcopy(outputs_template)
+        outputs_max['noise'] = deepcopy(outputs_template)
+        outputs_min['silence'] = deepcopy(outputs_template)
+        outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
     thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
@@ -742,23 +794,29 @@ def eval_avsbench_agg(
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
         # Add info for boxplots and threshold evaluation
-        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        heatmaps = {
+            'heatmap': out_dict['positive']['m_i_seg']
+        }
         if snr == None:
-            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmaps['silence_heatmap'] = out_dict['silence']['m_i_seg']
+            heatmaps['noise_heatmap'] = out_dict['noise']['m_i_seg']
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
-            evaluators[i].evaluate_batch(**out_dict, target=gts.to(model.device), thr=thr)
+            evaluators[i].evaluate_batch(**heatmaps, target=gts.to(model.device), thr=thr)
 
         # Visual results
         for j in range(test_dataloader.batch_size):
-            seg = out_dict['heatmap'][j:j+1]
-            seg_image = ((1 - seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+            seg = heatmaps['heatmap'][j:j+1]
+            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
             os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
             cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
@@ -775,26 +833,21 @@ def eval_avsbench_agg(
             draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
-    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
-
-    if snr == None:
-        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
-        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
-        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
-        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
-
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
-        if snr == None:
-            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
-            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
-            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
-            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -886,12 +939,18 @@ def eval_flickr_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
-    heatmap_sil_min_values = []
-    heatmap_sil_max_values = []
-    heatmap_noise_min_values = []
-    heatmap_noise_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template)
+    }
+    if snr == None:
+        outputs_max['silence'] = deepcopy(outputs_template)
+        outputs_max['noise'] = deepcopy(outputs_template)
+        outputs_min['silence'] = deepcopy(outputs_template)
+        outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
     thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
@@ -920,23 +979,29 @@ def eval_flickr_agg(
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
         # Add info for boxplots and threshold evaluation
-        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        heatmaps = {
+            'heatmap': out_dict['positive']['m_i_seg']
+        }
         if snr == None:
-            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmaps['silence_heatmap'] = out_dict['silence']['m_i_seg']
+            heatmaps['noise_heatmap'] = out_dict['noise']['m_i_seg']
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
-            evaluators[i].evaluate_batch(**out_dict, target=bboxes, thr=thr)
+            evaluators[i].evaluate_batch(**heatmaps, target=bboxes, thr=thr)
 
         # Visual results
         for j in range(test_dataloader.batch_size):
-            seg = (out_dict['heatmap'][j:j+1])
-            seg_image = ((1 - seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+            seg = (heatmaps['heatmap'][j:j+1])
+            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
             os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
             cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
@@ -952,26 +1017,21 @@ def eval_flickr_agg(
             draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
-    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
-
-    if snr == None:
-        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
-        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
-        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
-        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
-
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
-        if snr == None:
-            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
-            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
-            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
-            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -1060,12 +1120,18 @@ def eval_exvggss_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
-    heatmap_sil_min_values = []
-    heatmap_sil_max_values = []
-    heatmap_noise_min_values = []
-    heatmap_noise_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template)
+    }
+    if snr == None:
+        outputs_max['silence'] = deepcopy(outputs_template)
+        outputs_max['noise'] = deepcopy(outputs_template)
+        outputs_min['silence'] = deepcopy(outputs_template)
+        outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
     thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
@@ -1094,14 +1160,20 @@ def eval_exvggss_agg(
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
         # Add info for boxplots and threshold evaluation
-        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        heatmaps = {
+            'heatmap': out_dict['positive']['m_i_seg']
+        }
         if snr == None:
-            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmaps['silence_heatmap'] = out_dict['silence']['m_i_seg']
+            heatmaps['noise_heatmap'] = out_dict['noise']['m_i_seg']
 
         # Calculate confidence value for extended dataset
         v_f = model.encode_masked_vision(images.to(model.device), audio_driven_embedding)[0]
@@ -1110,28 +1182,23 @@ def eval_exvggss_agg(
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
-            evaluators[i].evaluate_batch(**out_dict, gt=bboxes, label=labels, conf=confs, name=name, thr=thr)
-
-    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
-
-    if snr == None:
-        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
-        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
-        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
-        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+            evaluators[i].evaluate_batch(**heatmaps, gt=bboxes, label=labels, conf=confs, name=name, thr=thr)
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
-        if snr == None:
-            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
-            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
-            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
-            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -1221,12 +1288,18 @@ def eval_exflickr_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
-    heatmap_sil_min_values = []
-    heatmap_sil_max_values = []
-    heatmap_noise_min_values = []
-    heatmap_noise_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template)
+    }
+    if snr == None:
+        outputs_max['silence'] = deepcopy(outputs_template)
+        outputs_max['noise'] = deepcopy(outputs_template)
+        outputs_min['silence'] = deepcopy(outputs_template)
+        outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
     thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
@@ -1255,14 +1328,20 @@ def eval_exflickr_agg(
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
         # Add info for boxplots and threshold evaluation
-        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        heatmaps = {
+            'heatmap': out_dict['positive']['m_i_seg']
+        }
         if snr == None:
-            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmaps['silence_heatmap'] = out_dict['silence']['m_i_seg']
+            heatmaps['noise_heatmap'] = out_dict['noise']['m_i_seg']
 
         # Calculate confidence value for extended dataset
         v_f = model.encode_masked_vision(images.to(model.device), audio_driven_embedding)[0]
@@ -1271,28 +1350,23 @@ def eval_exflickr_agg(
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs):
-            evaluators[i].evaluate_batch(**out_dict, gt=bboxes, label=labels, conf=confs, name=name, thr=thr)
-
-    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
-
-    if snr == None:
-        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
-        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
-        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
-        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
+            evaluators[i].evaluate_batch(**heatmaps, gt=bboxes, label=labels, conf=confs, name=name, thr=thr)
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
-        if snr == None:
-            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
-            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
-            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
-            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
 
     epoch = 0 if epoch == 'best' else epoch
 
@@ -1430,12 +1504,18 @@ def eval_avatar_agg(
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
-    heatmap_pos_min_values = []
-    heatmap_pos_max_values = []
-    heatmap_sil_min_values = []
-    heatmap_sil_max_values = []
-    heatmap_noise_min_values = []
-    heatmap_noise_max_values = []
+    outputs_template = {'v_d_seg': [], 'm_i_seg': [], 'v_i_seg': [], 'v_f_sim': []}
+    outputs_max = {
+        'positive': deepcopy(outputs_template)
+    }
+    outputs_min = {
+        'positive': deepcopy(outputs_template)
+    }
+    if snr == None:
+        outputs_max['silence'] = deepcopy(outputs_template)
+        outputs_max['noise'] = deepcopy(outputs_template)
+        outputs_min['silence'] = deepcopy(outputs_template)
+        outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
     thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
@@ -1464,17 +1544,23 @@ def eval_avatar_agg(
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
         # Add info for boxplots and threshold evaluation
-        heatmap_pos_min_values += torch.amin(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
-        heatmap_pos_max_values += torch.amax(out_dict['heatmap'], dim=(1, 2)).detach().cpu().tolist()
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_max[audio_type][arr_name] += torch.amax(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
 
+        for audio_type in out_dict.keys():
+            for arr_name in out_dict[audio_type].keys():
+                outputs_min[audio_type][arr_name] += torch.amin(out_dict[audio_type][arr_name], dim=tuple(range(1, out_dict[audio_type][arr_name].ndim))).detach().cpu().tolist()
+
+        heatmaps = {
+            'heatmap': out_dict['positive']['m_i_seg']
+        }
         if snr == None:
-            heatmap_sil_min_values += torch.amin(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_sil_max_values += torch.amax(out_dict['sil_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_min_values += torch.amin(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
-            heatmap_noise_max_values += torch.amax(out_dict['noise_heatmap'], dim=(1, 2)).detach().cpu().tolist()
+            heatmaps['silence_heatmap'] = out_dict['silence']['m_i_seg']
+            heatmaps['noise_heatmap'] = out_dict['noise']['m_i_seg']
 
         # Evaluation for all thresholds
-        target = torch.zeros_like(out_dict['heatmap'])
+        target = torch.zeros_like(heatmaps['heatmap'])
         labels = []
         for b, gt in enumerate(gts):
             mask = torch.zeros((gt['original_height'], gt['original_width']))
@@ -1486,20 +1572,20 @@ def eval_avatar_agg(
             target[b] = mask >= 1
             labels.append(label)
 
-        target_bb = torch.zeros_like(out_dict['heatmap'])
+        target_bb = torch.zeros_like(heatmaps['heatmap'])
         for b, gt in enumerate(gts):
             mask = torch.tensor(convert_bb_to_mask(gt, gt['original_height'], gt['original_width']))
             mask = F.interpolate(mask.unsqueeze(0).unsqueeze(0).float(), size=gt_resolution, mode='bilinear', align_corners=False).squeeze()
             target_bb[b] = mask
 
         for i, thr in enumerate(thrs):
-            evaluators_seg[i].evaluate_batch(**out_dict, target=target.to(model.device), thr=thr)
-            evaluators_bb[i].evaluate_batch(**out_dict, target=target_bb.to(model.device), thr=thr)
+            evaluators_seg[i].evaluate_batch(**heatmaps, target=target.to(model.device), thr=thr)
+            evaluators_bb[i].evaluate_batch(**heatmaps, target=target_bb.to(model.device), thr=thr)
 
         # Visual results
         for j in range(test_dataloader.batch_size):
-            heatmap = out_dict['heatmap'][j:j+1]
-            heatmap_np = ((1 - heatmap.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+            heatmap = heatmaps['heatmap'][j:j+1]
+            heatmap_np = ((heatmap.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
             heatmap_image = Image.fromarray(heatmap_np)
 
             os.makedirs(f'{result_dir}/heatmap/{name[j].split("/")[0]}', exist_ok=True)
@@ -1508,32 +1594,27 @@ def eval_avatar_agg(
             heatmap_image.save(f'{result_dir}/heatmap/{name[j]}.jpg')
 
             original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
-            gt_image = Image.fromarray(((1 - target_bb[j].squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)).resize(gt_resolution)
+            gt_image = Image.fromarray(((target_bb[j].squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)).resize(gt_resolution)
             seg_image = heatmap_image.resize(gt_resolution).point(lambda p: 0 if p / 255 < 0.5 else 255)
 
             draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
-    heatmap_pos_min_values = np.array(heatmap_pos_min_values)
-    heatmap_pos_max_values = np.array(heatmap_pos_max_values)
-
-    if snr == None:
-        heatmap_sil_min_values = np.array(heatmap_sil_min_values)
-        heatmap_sil_max_values = np.array(heatmap_sil_max_values)
-        heatmap_noise_min_values = np.array(heatmap_noise_min_values)
-        heatmap_noise_max_values = np.array(heatmap_noise_max_values)
-
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
-        heatmap_pos_min_values.dump(os.path.join(numpy_path, test_split + f'_pos_min{"_snr" + str(snr) if snr != None else ""}.pkl'))
-        heatmap_pos_max_values.dump(os.path.join(numpy_path, test_split + f'_pos_max{"_snr" + str(snr) if snr != None else ""}.pkl'))
 
-        if snr == None:
-            heatmap_sil_min_values.dump(os.path.join(numpy_path, test_split + '_sil_min.pkl'))
-            heatmap_sil_max_values.dump(os.path.join(numpy_path, test_split + '_sil_max.pkl'))
-            heatmap_noise_min_values.dump(os.path.join(numpy_path, test_split + '_noise_min.pkl'))
-            heatmap_noise_max_values.dump(os.path.join(numpy_path, test_split + '_noise_max.pkl'))
+        for audio_type in outputs_max.keys():
+            for arr_name in outputs_max[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
+                )
+
+        for audio_type in outputs_min.keys():
+            for arr_name in outputs_min[audio_type].keys():
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                    np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
+                )
 
     epoch = 0 if epoch == 'best' else epoch
 

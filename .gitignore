@@ -34,7 +34,7 @@ __pycache__
 
 *.env
 
-train_outputs
+train_outputs*
 
 val_audios*
 
