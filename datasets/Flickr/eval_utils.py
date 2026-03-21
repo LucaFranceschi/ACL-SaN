@@ -58,16 +58,22 @@ class Evaluator(object):
         if noise_heatmap != None:
             self._evaluate_batch(noise_heatmap, 'noise', thr, target)
 
-    def _evaluate_batch(self, heatmap, metric, thr, target):
-        for j in range(heatmap.size(0)):
-            infer = heatmap[j]
+    def _evaluate_batch(self, heatmap, metric, thr, gt):
+        for i in range(heatmap.size(0)):
+            pred = heatmap[i].detach().cpu()
+            target = gt[i]
             if thr is None:
-                thr = np.sort(infer.detach().cpu().numpy().flatten())[int(infer.shape[1] * infer.shape[2] / 2)]
+                thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
+            elif thr == 'adap':
+                gt_nums = (target!=0).sum()
+                if int(gt_nums) == 0:
+                    gt_nums = int(target.shape[0] * target.shape[1]) // 2
+                thr = np.sort(target.flatten())[int(target.shape[0] * target.shape[1]) - int(gt_nums)] # adap
 
             if metric in ('sil', 'noise'):
-                self.cal_pIA(infer, metric, thr)
+                self.cal_pIA(pred, metric, thr)
             else:
-                self.cal_CIOU(infer, target[j], metric, thr)
+                self.cal_CIOU(pred, target, metric, thr)
 
     def cal_CIOU(self, infer: torch.Tensor, gtmap: torch.Tensor, metric, thres: float = 0.01):
         """

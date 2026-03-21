@@ -41,11 +41,14 @@ class Evaluator(object):
             self._evaluate_batch(noise_heatmap, 'noise', thr)
 
     def _evaluate_batch(self, heatmap, metric, thr):
-        for j in range(heatmap.size(0)):
-            infer = heatmap[j]
+        for i in range(heatmap.size(0)):
+            pred = heatmap[i].detach().cpu()
             if thr is None:
-                thr = np.sort(infer.detach().cpu().numpy().flatten())[int(infer.shape[1] * infer.shape[2] / 2)]
-            self.cal_pIA(infer, metric, thr)
+                thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
+            elif thr == 'adap':
+                raise NotImplementedError('This dataset does not have GT')
+
+            self.cal_pIA(pred, metric, thr)
 
     def cal_pIA(self, infer: torch.Tensor, metric: str, thres: float = 0.01):
         '''

@@ -265,7 +265,7 @@ def eval_vggsound_agg(
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
+    thrs = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds.values()) + [None]
     evaluators = [vggsound_eval.Evaluator() for i in range(len(thrs))]
 
     if snr != None:
@@ -359,13 +359,13 @@ def eval_vggsound_agg(
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
@@ -486,13 +486,13 @@ def eval_vggss_get_thresholds(
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
@@ -578,7 +578,7 @@ def eval_vggss_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
+    thrs = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds.values()) + ['adap', None]
     evaluators = [vggss_eval.Evaluator() for i in range(len(thrs))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGG-SS dataset ({test_split})...")):
@@ -655,7 +655,7 @@ def eval_vggss_agg(
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
@@ -774,7 +774,7 @@ def eval_avsbench_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
+    thrs = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds.values()) + ['adap', None]
     evaluators = [avsbench_eval.Evaluator() for i in range(len(thrs))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate AVSBench dataset ({test_split})...")):
@@ -844,13 +844,13 @@ def eval_avsbench_agg(
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
@@ -958,7 +958,7 @@ def eval_flickr_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
+    thrs = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds.values()) + ['adap', None]
     evaluators = [flickr_eval.Evaluator() for i in range(len(thrs))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc="Evaluate Flickr dataset...")):
@@ -1028,13 +1028,13 @@ def eval_flickr_agg(
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
@@ -1139,7 +1139,7 @@ def eval_exvggss_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
+    thrs = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds.values()) + ['adap', None]
     evaluators = [exvggss_eval.Evaluator() for i in range(len(thrs))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate Extend VGG-SS dataset ({test_split})...")):
@@ -1195,13 +1195,13 @@ def eval_exvggss_agg(
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
@@ -1307,7 +1307,7 @@ def eval_exflickr_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
+    thrs = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds.values()) + ['adap', None]
     evaluators = [exflickr_eval.Evaluator() for i in range(len(thrs))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate Extend Flickr dataset ({test_split})...")):
@@ -1363,13 +1363,13 @@ def eval_exflickr_agg(
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
@@ -1523,7 +1523,7 @@ def eval_avatar_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
+    thrs = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds.values()) + ['adap', None]
     evaluators_seg = [avatar_eval.Evaluator() for i in range(len(thrs))]
     evaluators_bb = [avatar_eval.Evaluator() for i in range(len(thrs))]
 
@@ -1611,13 +1611,13 @@ def eval_avatar_agg(
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 

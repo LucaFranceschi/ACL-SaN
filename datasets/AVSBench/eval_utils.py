@@ -60,23 +60,29 @@ class Evaluator(object):
         if noise_heatmap != None:
             self._evaluate_batch(noise_heatmap, 'noise', thr, target)
 
-    def _evaluate_batch(self, heatmap, metric, thr, target):
+    def _evaluate_batch(self, heatmap, metric, thr, gt):
         thrs = []
 
-        for j in range(heatmap.size(0)):
-            infer = heatmap[j]
+        for i in range(heatmap.size(0)):
+            pred = heatmap[i].detach().cpu()
+            target = gt[i]
             if thr is None:
-                thrs.append(np.sort(infer.detach().cpu().numpy().flatten())[int(infer.shape[1] * infer.shape[2] / 2)])
-            else:
-                thrs.append(thr)
+                thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
+            elif thr == 'adap':
+                gt_nums = (target!=0).sum()
+                if int(gt_nums) == 0:
+                    gt_nums = int(target.shape[0] * target.shape[1]) // 2
+                thr = np.sort(target.flatten())[int(target.shape[0] * target.shape[1]) - int(gt_nums)] # adap
+
+            thrs.append(thr)
 
             if metric in ('sil', 'noise'):
-                self.cal_pIA(infer, metric, thr)
+                self.cal_pIA(pred, metric, thr)
             else:
-                self.cal_CIOU(infer, target[j], metric, thr)
+                self.cal_CIOU(pred, target, metric, thr)
 
         if metric == 'std':
-            infers, gts = heatmap.squeeze(1), target.squeeze(1)
+            infers, gts = heatmap.squeeze(1), gt.squeeze(1)
             self.mask_iou(infers, gts, metric, thrs)
             self.Eval_Fmeasure(infers, gts, metric)
 

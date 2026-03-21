@@ -31,4 +31,4 @@ train_ACL.py \
 --save_path $SAVE_PATH \
 --wandb_logging
 
-# --recover_from $REPO/train_outputs/2059437/Train_record/ACL_ViT16_aclifa_2gpu/Param_5.pth \
+# --recover_from $REPO/train_outputs/2103685/Train_record/ACL_ViT16_aclifa_2gpu/Param_13.pth \

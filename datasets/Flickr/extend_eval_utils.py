@@ -232,15 +232,21 @@ class Evaluator(object):
     def _evaluate_batch(self, heatmap: torch.Tensor, metric, gt: torch.Tensor, label, conf, name, thr = None):
         for i in range(heatmap.shape[0]):
             pred = heatmap[i].detach().cpu()
+            target = gt[i]
             if thr is None:
-                thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1] * 0.5)]
+                thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
+            elif thr == 'adap':
+                gt_nums = (target!=0).sum()
+                if int(gt_nums) == 0:
+                    gt_nums = int(target.shape[0] * target.shape[1]) // 2
+                thr = np.sort(target.flatten())[int(target.shape[0] * target.shape[1]) - int(gt_nums)] # adap
 
             bb = 1 if label[i] != 'non-sounding' else 0
 
             if metric in ('sil', 'noise'):
                 self.cal_pIA(pred, metric, thr)
             else:
-                self.update(bb, gt[i], conf[i], pred, thr, name[i], metric)
+                self.update(bb, target, conf[i], pred, thr, name[i], metric)
 
     def cal_pIA(self, infer: torch.Tensor, metric: str, thres: float = 0.01):
         '''
