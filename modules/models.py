@@ -251,6 +251,10 @@ class ACL(nn.Module):
         v_f_sim = (torch.einsum('bc,bc->b', F.normalize(masked_image_emb), embedding) + 1) / 2 # cosine sim + rescaling to [0, 1]
         v_f_sim = v_f_sim.unsqueeze(1) # to make min/max operations the same otherwise [B] --> [1]
 
+        # this is because we need h resolution for the get_pixels, but need resolution for the rest of the evaluation
+        if image_mask.shape[2] != resolution:
+            image_mask = F.interpolate(image_mask, resolution)
+
         # these are the values that I will have to store min/max values for boxplots
         return {
             'v_d_seg': v_d_seg,

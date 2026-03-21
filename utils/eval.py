@@ -571,6 +571,11 @@ def eval_vggss_agg(
     outputs_min = {
         'positive': deepcopy(outputs_template)
     }
+    if snr == None:
+        outputs_max['silence'] = deepcopy(outputs_template)
+        outputs_max['noise'] = deepcopy(outputs_template)
+        outputs_min['silence'] = deepcopy(outputs_template)
+        outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
     thrs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.30, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.70, 0.75, 0.8, 0.85, 0.9, 0.95] + list(add_thresholds.values())
@@ -638,19 +643,19 @@ def eval_vggss_agg(
             draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
     # only these two because non-snr are already computed by eval_vggss_get_thresholds
-    if snr != None and tensorboard_path is not None and epoch is not None:
+    if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
         os.makedirs(numpy_path, exist_ok=True)
 
         for audio_type in outputs_max.keys():
             for arr_name in outputs_max[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_max_snr{snr}'),
+                np.save(os.path.join(numpy_path, test_split + f'_{arr_name}_{audio_type[:3]}_max{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_max[audio_type][arr_name], dtype=np.float16)
                 )
 
         for audio_type in outputs_min.keys():
             for arr_name in outputs_min[audio_type].keys():
-                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min_snr{snr}'),
+                np.save(os.path.join(numpy_path, test_split + f'{arr_name}_{audio_type[:3]}_min{"_snr" + str(snr) if snr != None else ""}'),
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
