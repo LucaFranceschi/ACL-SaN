@@ -16,10 +16,10 @@
 set -e
 
 EXPERIMENT_VERSION=$1
-JOB_ID=$2
+PATH_TO_MODEL=$2
 
 nvidia-smi
 echo SLURM_JOB_NODELIST=$SLURM_JOB_NODELIST
 
 singularity run --nv --bind /home/lfranceschi/repos/ACL-SSL container.sif \
-/home/lfranceschi/repos/ACL-SSL/scripts/19-single_gpu_test_noise.sh $EXPERIMENT_VERSION $JOB_ID
+/home/lfranceschi/repos/ACL-SSL/scripts/19-single_gpu_test_noise.sh $EXPERIMENT_VERSION $PATH_TO_MODEL

@@ -65,7 +65,7 @@ class Evaluator(object):
 
         for i in range(heatmap.size(0)):
             pred = heatmap[i].detach().cpu()
-            target = gt[i]
+            target = gt[i].cpu()
             if thr is None:
                 thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
             elif thr == 'adap':

@@ -10,7 +10,7 @@ nvidia-smi
 
 REPO="/home/lfranceschi/repos/ACL-SSL"
 DATA=$REPO/datasets
-SAVE_PATH=$REPO/train_outputs/$JOB_ID
+SAVE_PATH=$REPO/train_outputs/$JOB_ID/$SLURM_JOBID
 
 cd $REPO
 

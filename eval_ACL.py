@@ -111,6 +111,12 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
         'best_AUC_N_noise': {'epoch': 0, 'AUC': 0.0, 'thr': 0.0}
     }
 
+    module_load_path = re.search(r'(train_outputs/[0-9]+)/.*', save_path)
+    if module_load_path != None:
+        module_load_path = module_load_path.group(1)
+    else:
+        module_load_path = save_path
+
     for epoch in epoch_list:
         # if epoch not in [16, 18, 19]:
         #     continue
@@ -130,7 +136,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
         ''' Make distributed data parallel module '''
         module = model
         if data_path_dict['model_weights'] == '':
-            module.load(os.path.join(save_path, 'Train_record', model_exp_name, f'Param_{epoch}.pth'))
+            module.load(os.path.join(module_load_path, 'Train_record', model_exp_name, f'Param_{epoch}.pth'))
         else:
             module.load(data_path_dict['model_weights'])
 

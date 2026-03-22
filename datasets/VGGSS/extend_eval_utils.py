@@ -232,7 +232,7 @@ class Evaluator(object):
     def _evaluate_batch(self, heatmap: torch.Tensor, metric, gt: torch.Tensor, label, conf, name, thr = None):
         for i in range(heatmap.shape[0]):
             pred = heatmap[i].detach().cpu()
-            target = gt[i]
+            target = gt[i].cpu()
             if thr is None:
                 thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
             elif thr == 'adap':
