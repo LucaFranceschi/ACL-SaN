@@ -40,13 +40,15 @@ class Evaluator(object):
         if noise_heatmap != None:
             self._evaluate_batch(noise_heatmap, 'noise', thr)
 
-    def _evaluate_batch(self, heatmap, metric, thr):
+    def _evaluate_batch(self, heatmap, metric, thr_param):
         for i in range(heatmap.size(0)):
             pred = heatmap[i].detach().cpu()
-            if thr is None:
-                thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
-            elif thr == 'adap':
+            if thr_param is None:
+                thr = np.sort(pred.flatten())[int(pred.shape[1] * pred.shape[2]) // 2]
+            elif thr_param == 'adap':
                 raise NotImplementedError('This dataset does not have GT')
+            else:
+                thr = thr_param
 
             self.cal_pIA(pred, metric, thr)
 

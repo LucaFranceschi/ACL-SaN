@@ -92,9 +92,15 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
     avatar_dataloader = torch.utils.data.DataLoader(avatar_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                     pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
 
+    module_load_path = re.search(r'(train_outputs/[\w\-]+)/.*', save_path)
+    if module_load_path != None:
+        module_load_path = module_load_path.group(1)
+    else:
+        module_load_path = save_path
+
     if data_path_dict['model_weights'] == '':
-        model_exp_name = os.listdir(os.path.join(save_path, 'Train_record'))[0]
-        model_weights_names = os.listdir(os.path.join(save_path, 'Train_record', model_exp_name))
+        model_exp_name = os.listdir(os.path.join(module_load_path, 'Train_record'))[0]
+        model_weights_names = os.listdir(os.path.join(module_load_path, 'Train_record', model_exp_name))
         epoch_list = sorted(int(m.group(1)) for s in model_weights_names if (m := re.match(r'Param_(\d+).pth', s)))
     else:
         model_exp_name = f'{model_name}_{train_config_name}' if train_config_name != "" else model_name
@@ -110,12 +116,6 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
         'best_AUC_N_silence': {'epoch': 0, 'AUC': 0.0, 'thr': 0.0},
         'best_AUC_N_noise': {'epoch': 0, 'AUC': 0.0, 'thr': 0.0}
     }
-
-    module_load_path = re.search(r'(train_outputs/[0-9]+)/.*', save_path)
-    if module_load_path != None:
-        module_load_path = module_load_path.group(1)
-    else:
-        module_load_path = save_path
 
     for epoch in epoch_list:
         # if epoch not in [16, 18, 19]:

@@ -229,17 +229,19 @@ class Evaluator(object):
         if noise_heatmap != None:
             self._evaluate_batch(noise_heatmap, 'noise', gt, label, conf, name, thr)
 
-    def _evaluate_batch(self, heatmap: torch.Tensor, metric, gt: torch.Tensor, label, conf, name, thr = None):
+    def _evaluate_batch(self, heatmap: torch.Tensor, metric, gt: torch.Tensor, label, conf, name, thr_param = None):
         for i in range(heatmap.shape[0]):
             pred = heatmap[i].detach().cpu()
             target = gt[i].cpu()
-            if thr is None:
-                thr = np.sort(pred.flatten())[int(pred.shape[0] * pred.shape[1]) // 2]
-            elif thr == 'adap':
+            if thr_param is None:
+                thr = np.sort(pred.flatten())[int(pred.shape[1] * pred.shape[2]) // 2]
+            elif thr_param == 'adap':
                 gt_nums = (target!=0).sum()
                 if int(gt_nums) == 0:
-                    gt_nums = int(target.shape[0] * target.shape[1]) // 2
-                thr = np.sort(target.flatten())[int(target.shape[0] * target.shape[1]) - int(gt_nums)] # adap
+                    gt_nums = int(target.shape[1] * target.shape[2]) // 2
+                thr = np.sort(pred.flatten())[int(pred.shape[1] * pred.shape[2]) - int(gt_nums)] # adap
+            else:
+                thr = thr_param
 
             bb = 1 if label[i] != 'non-sounding' else 0
 
