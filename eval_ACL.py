@@ -92,7 +92,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, save_path):
     avatar_dataloader = torch.utils.data.DataLoader(avatar_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                     pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
 
-    module_load_path = re.search(r'(train_outputs/[\w\-]+)/.*', save_path)
+    module_load_path = re.search(r'(train_outputs(?:/pirineus3)?/[\w\-]+)/', save_path)
     if module_load_path != None:
         module_load_path = module_load_path.group(1)
     else:
