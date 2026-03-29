@@ -56,7 +56,6 @@ def acl_i(v_i: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **k
 
     return loss
 
-
 def acl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **kwargs) -> torch.Tensor:
     '''
     Compute the feature-level audio-grounded contrastive learning (ACL_F) loss.
@@ -71,7 +70,7 @@ def acl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **k
     '''
     B, _, C = v_f.size()
 
-    logits = torch.einsum('bnc,bc->bn', F.normalize(v_f, dim=2), F.normalize(pred_emb))
+    logits = torch.einsum('bnc,bc->bn', F.normalize(v_f, dim=2), F.normalize(pred_emb, dim=1))
 
     neg_audios = []
     neg_audios.append(kwargs.get('pred_emb_san', None))
@@ -107,7 +106,7 @@ def noise_l(sil_n_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, san
     return loss
 
 def diff_san_l(v_f: torch.Tensor, pred_emb: torch.Tensor, noisy_v_f: torch.Tensor, pred_emb_noisy: torch.Tensor, **kwargs) -> torch.Tensor:
-    logits = torch.einsum('bnc,bc->bn', F.normalize(v_f, dim=2), F.normalize(pred_emb))
-    logits_noisy = torch.einsum('bnc,bc->bn', F.normalize(noisy_v_f, dim=2), F.normalize(pred_emb_noisy))
+    logits = torch.einsum('bnc,bc->bn', F.normalize(v_f, dim=2), F.normalize(pred_emb, dim=1))
+    logits_noisy = torch.einsum('bnc,bc->bn', F.normalize(noisy_v_f, dim=2), F.normalize(pred_emb_noisy, dim=1))
 
     return F.mse_loss(logits_noisy, logits)

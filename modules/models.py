@@ -217,7 +217,7 @@ class ACL(nn.Module):
         else:
             logits = self.forward_decoder(image, embedding, resolution)
 
-        return logits
+        return logits # [B_i, B_e, h, w] or [B, h, w] depending on force_comb or other things
 
     def forward_module_eval(self, image: torch.Tensor, embedding: torch.Tensor, resolution: int = 224,
                        force_comb: bool = False) -> torch.Tensor:
@@ -225,7 +225,6 @@ class ACL(nn.Module):
         Same spirit as forward_module but returns more things for evaluation purposes.
         '''
         B, c, h, w = image.shape # [B, 3, 352, 352]
-        print(f'{image.shape=}')
         if embedding.shape[0] != image.shape[0] and embedding.shape[0] == 1:
             raise NotImplementedError('forward_module_eval is not meant to be used during training!')
         elif embedding.shape[0] != image.shape[0] and embedding.shape[0] != 1 and image.shape[0] != 1 or force_comb:
@@ -291,7 +290,7 @@ class ACL(nn.Module):
         """
         B, c, h, w = image.shape
         maskclip_feat = self.av_grounder.get_pixels(image)  # v^D: [B, c, h, w]
-        clipseg_mask = self.forward_module(image, embedding, h, force_comb=True)  # M^G: [B, B, H, W]
+        clipseg_mask = self.forward_module(image, embedding, h, force_comb=True)  # M^G: [B, B, h, w]
 
         # Area
         area_matrix = self.masker_i(clipseg_mask).mean((2, 3))
