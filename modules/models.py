@@ -14,6 +14,8 @@ from torch.utils.checkpoint import checkpoint
 
 from transformers.models.clipseg.modeling_clipseg import _expand_mask
 
+from utils.util import remove_diagonal
+
 class ACL(nn.Module):
     def __init__(self, conf_file: str, device: str, model_path: str):
         """
@@ -433,10 +435,154 @@ class ACL(nn.Module):
 
 class ADCL(ACL):
     '''
-    Audio-DeGrounded Contrastive Learning (ACL) model. Simplest way I could find to evaluate decoder.
+    Audio-DeGrounded Contrastive Learning (ACL) model. Removes the CLIPSeg decoder step to evaluate
+    how much does it affect the final ACL model.
     '''
-    def _forward_decoder(self, image: torch.Tensor, embedding: torch.Tensor) -> torch.Tensor:
+    # v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
+
+    # NO USAR AVERAGE DIRECTAMENTE, USAR ANTES
+    # THE HARD WAY / LVS
+    # this averages the channels
+    # this wont work for the contrastive loss. check how to do that.
+
+    # mask hard negatives + easy negatives
+    def __init__(self, conf_file, device, model_path):
+        super().__init__(conf_file, device, model_path)
+
+        self.m = nn.Sigmoid()
+        # self.temperature = 0.07
+
+    def audio_visual_sim(self, v_d: torch.Tensor, embedding: torch.Tensor, resolution: int = 224) -> torch.Tensor:
+        """
+        Forward pass of audio-visual grounder
+
+        Args:
+            v_d (torch.Tensor): Input v_d tensor.
+            embedding (torch.Tensor): Condition embedding tensor for grounder.
+            resolution (int): Resolution of the output.
+            ignore_indices (list): List of indices to ignore.
+
+        Returns:
+            torch.Tensor: Logits from the decoder.
+        """
+
+        logits = torch.einsum('bchw,bc->bhw', F.normalize(v_d, dim=1), F.normalize(embedding, dim=1)) # [B, h, w]
+
+        if logits.ndim == 2:
+            logits = logits.unsqueeze(0).unsqueeze(1)
+        else:
+            logits = logits.unsqueeze(1)
+
+        B, c, h, w = v_d.shape
+        if (h, w) != (resolution, resolution):
+            logits = F.interpolate(logits, resolution, mode='bicubic')
+
+        return logits # [B, 1, h, w]
+
+    def forward_module(self, v_d: torch.Tensor, embedding: torch.Tensor, resolution: int = 224,
+                       force_comb: bool = False) -> torch.Tensor:
+        """
+        Forward pass through the module.
+
+        Args:
+            v_d (torch.Tensor): Input v_d tensor.
+            embedding (torch.Tensor): Condition embedding tensor for grounder.
+            force_comb (bool): If True, force to get logits with all combination audio and v_d.
+
+        Returns:
+            torch.Tensor: Logits from the decoder.
+        """
+        # N v_d, 1 embedding case -> [B_i, h, w]
+        if embedding.shape[0] != v_d.shape[0] and embedding.shape[0] == 1:
+            embeddings = embedding.repeat(v_d.shape[0], 1)
+            logits = self.audio_visual_sim(v_d, embeddings, resolution)
+
+        # N v_d, M embedding case -> [B_i, B_e, h, w]
+        elif embedding.shape[0] != v_d.shape[0] and embedding.shape[0] != 1 and v_d.shape[0] != 1 or force_comb:
+            logit_list = []
+            for i in range(embedding.shape[0]):
+                embeddings = embedding[i].unsqueeze(0).repeat(v_d.shape[0], 1)
+                logit_list.append(self.audio_visual_sim(v_d, embeddings, resolution))
+            logits = torch.cat(logit_list, dim=1)
+
+        # N v_d, N embedding or 1 v_d, N embedding -> [B_e, h, w]
+        else:
+            logits = self.audio_visual_sim(v_d, embedding, resolution)
+
+        return logits # [B_i, B_e, h, w] or [B, h, w] depending on force_comb or other things
+
+    def encode_masked_vision(self, image: torch.Tensor, embedding: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, float, float]:
+        """
+        Heavily inspired by:
+
+        https://github.com/jinxiang-liu/SSL-TIE/blob/c49e6a94e4ed63bba864ba01e9138451ca1cc801/models/model.py#L57
+        """
+        tau = self.args.model.tau
+        epsilon = self.args.model.epsilon
+        epsilon2 = self.args.model.epsilon2
+        trimap = self.args.model.trimap
+
+        B, c, H, W = image.shape
         v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
 
-        logits = torch.einsum('bchw,bc->bhw', F.normalize(v_d), F.normalize(embedding))
-        return logits
+        # similarity for (soft) positives
+        sim_i_i = self.audio_visual_sim(v_d, embedding, H) # A: [B, 1, H, W]
+
+        # similarity for (soft) negatives
+        sim_i_j = self.forward_module(v_d, embedding, H, force_comb=True)  # A0: [B, B, H, W]
+        sim_i_j = remove_diagonal(sim_i_j) # [B, B-1, H, W] removed positive (diagonal elements)
+
+        Pos_mask = self.m((sim_i_i - epsilon)/tau)
+        Pos_mask_i_j = self.m((sim_i_j - epsilon)/tau)
+
+        if trimap:
+            Pos2 = self.m((sim_i_i - epsilon2)/tau)
+            Neg_mask = 1 - Pos2
+        else:
+            Neg_mask = 1 - Pos_mask
+
+        sim = (Pos_mask * sim_i_i).view(*sim_i_i.shape[:2],-1).sum(-1) / (Pos_mask.view(*Pos_mask.shape[:2],-1).sum(-1))                # easy positives [B, 1]
+        sim1 = (Pos_mask_i_j * sim_i_j).view(*sim_i_j.shape[:2],-1).sum(-1) / (Pos_mask_i_j.view(*Pos_mask_i_j.shape[:2],-1).sum(-1))   # easy negatives [B, B-1]
+        sim2 = (Neg_mask * sim_i_i).view(*sim_i_i.shape[:2],-1).sum(-1) / (Neg_mask.view(*Neg_mask.shape[:2],-1).sum(-1))               # hard negatives [B, 1]
+
+        logits = torch.cat((sim, sim1, sim2), 1) # / self.temperature # done in loss
+
+        # Area
+        positive_area = Pos_mask.mean()
+        negative_area = Neg_mask.mean()
+
+        return logits, None, positive_area, negative_area
+
+    def forward_for_validation(self, image: torch.Tensor, pred_emb: torch.Tensor, resolution: int = 224, **kwargs) -> dict:
+        # basically forward for silence audio
+        pred_emb_sil = kwargs.get('pred_emb_silence', None)
+        out_dict_sil = {}
+        if pred_emb_sil != None:
+            sil_v_f, sil_v_i, sil_p_area, sil_n_area = self.encode_masked_vision(image, pred_emb_sil.repeat(pred_emb.shape[0], 1))
+            out_dict_sil = {'sil_v_f': sil_v_f, 'sil_v_i': sil_v_i, 'sil_p_area': sil_p_area, 'sil_n_area': sil_n_area}
+
+        # basically forward for noise audio (only gaussian noise)
+        pred_emb_noise = kwargs.get('pred_emb_noise', None)
+        out_dict_noise = {}
+        if pred_emb_noise != None:
+            noise_v_f, noise_v_i, noise_p_area, noise_n_area = self.encode_masked_vision(image, pred_emb_noise.repeat(pred_emb.shape[0], 1))
+            out_dict_noise = {'noise_v_f': noise_v_f, 'noise_v_i': noise_v_i, 'noise_p_area': noise_p_area, 'noise_n_area': noise_n_area}
+
+        # forward for noisy audio (original + noise)
+        pred_emb_noisy = kwargs.get('pred_emb_noisy', None)
+        out_dict_noisy = {}
+        if pred_emb_noisy != None:
+            noisy_v_f, noisy_v_i, noisy_p_area, noisy_n_area = self.encode_masked_vision(image, pred_emb_noisy)
+            out_dict_noisy = {'noisy_v_f': noisy_v_f, 'noisy_v_i': noisy_v_i, 'noisy_p_area': noisy_p_area, 'noisy_n_area': noisy_n_area}
+
+        # finally forward for original audios
+        v_f, v_i, p_area, n_area = self.encode_masked_vision(image, pred_emb)
+        out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
+
+        v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
+        seg_logit = self.forward_module(v_d, pred_emb, resolution)
+        heatmap = self.m((seg_logit - self.args.model.epsilon)/self.args.model.tau)
+
+        out_dict = {**out_dict, 'heatmap': heatmap}
+
+        return out_dict

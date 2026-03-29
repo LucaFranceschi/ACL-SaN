@@ -251,3 +251,19 @@ class RandomApply(torch.nn.Module):
 If applying more audio transforms with different probability each will need also this
 https://github.com/Spijkervet/torchaudio-augmentations/blob/891b3b6e19551c211e7cdab36376c7e67e9d199c/torchaudio_augmentations/compose.py#L4
 '''
+
+def remove_diagonal(x: torch.Tensor) -> torch.Tensor:
+    B, _, H, W = x.shape
+
+    # For each row i, collect column indices [0..i-1, i+1..B-1]
+    idx = torch.arange(B, device=x.device)
+    # Build [B, B-1] index matrix of column indices to keep
+    col_idx = torch.stack([
+        torch.cat([idx[:i], idx[i+1:]])
+        for i in range(B)
+    ])  # [B, B-1]
+
+    # Expand for gathering over H and W
+    col_idx = col_idx[:, :, None, None].expand(B, B - 1, H, W)  # [B, B-1, H, W]
+
+    return x.gather(1, col_idx)

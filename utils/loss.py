@@ -110,3 +110,20 @@ def diff_san_l(v_f: torch.Tensor, pred_emb: torch.Tensor, noisy_v_f: torch.Tenso
     logits_noisy = torch.einsum('bnc,bc->bn', F.normalize(noisy_v_f, dim=2), F.normalize(pred_emb_noisy, dim=1))
 
     return F.mse_loss(logits_noisy, logits)
+
+def adcl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **kwargs) -> torch.Tensor:
+    B, _ = v_f.size() # remember v_f is logits and has shape [B, B+1]
+
+    logits = [v_f]
+    logits.append(kwargs.get('sil_v_f', None))
+    logits.append(kwargs.get('noise_v_f', None))
+    logits = [val for val in logits if val is not None]
+
+    logits = torch.cat(logits, dim=1)
+
+    labels = torch.zeros_like(logits, device=v_f.device)
+    labels[:, 0] = 1
+
+    loss = 0.5 * (F.cross_entropy(logits * beta, labels) + F.cross_entropy(logits.T * beta, labels.T))
+
+    return loss
