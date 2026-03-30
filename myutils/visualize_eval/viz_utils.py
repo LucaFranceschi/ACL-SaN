@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
-from experiment import Experiment
-
 def print_metrics(df, epoch='all', thr=0.5):
     filtered_df = df[
         (df['threshold'] == thr) &
@@ -271,9 +269,10 @@ def plot_all_experiments(experiments):
 
         plt.show()
 
-def boxplots_by_dataset(infer_info_df, dataset_name, threshold_dict, epochs, th_name = 'max_neg', min_max = 'max'):
+def boxplots_by_dataset(infer_info_df, dataset_name, threshold_dict, epochs, th_name = 'max_neg', min_max = 'max', seg_item = 'm_i_seg'):
     df = infer_info_df[(infer_info_df["dataset"] == dataset_name) &
-                                    (infer_info_df["min_max"] == min_max)].copy()
+                       (infer_info_df["min_max"] == min_max) &
+                       (infer_info_df["seg_item"] == seg_item)].copy()
 
     df = df[[e in epochs for e in df['epoch']]]
     col_order = sorted(df["epoch"].dropna().unique())
@@ -298,7 +297,7 @@ def boxplots_by_dataset(infer_info_df, dataset_name, threshold_dict, epochs, th_
         if th_value is not None:
             ax.axhline(float(th_value), color='crimson', linestyle='--', linewidth=1.5)
 
-    plt.suptitle(f'{dataset_name} test set ({th_name}_{min_max})')
+    plt.suptitle(f'{dataset_name} ({seg_item} - {th_name}_{min_max})')
     sns.move_legend(fig, loc='lower center', bbox_to_anchor=(0.5, -0.05), ncol=3, title=None, frameon=False)
     fig.set_titles(y=-0.1)
 
@@ -307,7 +306,7 @@ def boxplots_by_dataset(infer_info_df, dataset_name, threshold_dict, epochs, th_
     plt.show()
 
 def boxplots_by_dataset_compare(
-        list_of_experiments: list[Experiment],
+        list_of_experiments,
         list_of_epochs,
         dataset_name = 'vggss',
         seg_item = 'm_i_seg',

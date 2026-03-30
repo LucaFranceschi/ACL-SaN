@@ -59,5 +59,6 @@ class Experiment(object):
     def plot_all_metrics(self, epoch):
         plot_all_metrics(self.metrics[self.metrics['epoch'] == epoch])
 
-    def boxplots_by_dataset(self, dataset_name, epochs, th_name, min_max='max'):
-        boxplots_by_dataset(self.infer_info, dataset_name, self.thresholds, epochs, th_name=th_name, min_max=min_max)
+    def boxplots_by_dataset(self, dataset_name, epochs, th_name, min_max='max', seg_item='m_i_seg'):
+        boxplots_by_dataset(self.infer_info, dataset_name, self.thresholds, epochs,
+                            th_name=th_name, min_max=min_max, seg_item=seg_item)
