@@ -27,4 +27,5 @@ python -m torch.distributed.launch --nnodes=1 --nproc_per_node=2 --master_port 1
 --vggsound_path $DATA/vggsound \
 --avatar_path $DATA/AVATAR \
 --san_path $DATA/silence_and_noise/audio \
+--model_weights $REPO/train_outputs/$JOB_ID \
 --save_path $SAVE_PATH

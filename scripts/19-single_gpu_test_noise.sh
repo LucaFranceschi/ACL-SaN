@@ -1,9 +1,11 @@
 #!/bin/bash
 
+set -euo pipefail
+
 EXPERIMENT_VERSION=$1
 PATH_TO_MODEL=$2
 
-JOB_ID=$(sed -E 's/.*\/([0-9]+)\/.*/\1/' <<< "$PATH_TO_MODEL")
+JOB_ID=$(sed -E 's/(.*train_outputs\/)([0-9a-zA-Z-]+)\/.*/\2/;tx;q100;:x' <<< "$PATH_TO_MODEL")
 
 echo "SLURM_VISIBLE_DEVICES: $SLURM_JOB_GPUS"
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
