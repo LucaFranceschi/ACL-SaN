@@ -54,27 +54,31 @@ def get_silence_noise_audios(module, audio_size, san_active = False, real_san_au
             dim=0
         )
 
-        if use_cuda:
-            negative_audios.half()
-
-        negative_audios_emb['pred_emb_san'] = module.encode_audio(
+        audio_driven_embedding = module.encode_audio(
             negative_audios.to(module.device),
             placeholder_tokens.repeat((negative_audios.shape[0], 1)),
             text_pos_at_prompt,
             prompt_length
         ).detach()
+
+        if use_cuda:
+            audio_driven_embedding = audio_driven_embedding.half()
+
+        negative_audios_emb['pred_emb_san'] = audio_driven_embedding
 
     if real_san_audios_path:
         negative_audios = get_real_noise_audios(real_san_audios_path, SAMPLE_RATE, set_length)
 
-        if use_cuda:
-            negative_audios.half()
-
-        negative_audios_emb['pred_emb_real_san'] = module.encode_audio(
+        audio_driven_embedding = module.encode_audio(
             negative_audios.to(module.device),
             placeholder_tokens.repeat((negative_audios.shape[0], 1)),
             text_pos_at_prompt,
             prompt_length
         ).detach()
+
+        if use_cuda:
+            audio_driven_embedding = audio_driven_embedding.half()
+
+        negative_audios_emb['pred_emb_real_san'] = audio_driven_embedding
 
     return negative_audios_emb

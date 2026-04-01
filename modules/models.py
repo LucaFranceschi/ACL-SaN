@@ -144,7 +144,6 @@ class ACL(nn.Module):
                                                             output_attentions=None,
                                                             output_hidden_states=True,
                                                             return_dict=True)
-
         hidden_states = vision_outputs.hidden_states
         # we add +1 here as the hidden states also include the initial embeddings
         activations = [hidden_states[i + 1] for i in self.av_grounder.extract_layers]
@@ -304,15 +303,23 @@ class ACL(nn.Module):
         norm_feat_mask = feature_mask.sum(dim=(-2,-1)).clamp(1e-6).unsqueeze(-1) # [B, N, 1]
         feature_masked_emb = torch.einsum('bchw,bnhw->bnc', maskclip_feat, feature_mask) / norm_feat_mask
 
-        # Image level masker
-        ind = torch.arange(B).to(image.device)
-        image_mask = self.masker_i(clipseg_mask[ind, ind].unsqueeze(1))  # Positive pair only
+        if B == embedding.shape[0]:
+            # Image level masker
+            ind = torch.arange(B).to(image.device) # POSSIBLE BUG HERE TRY WITH MIN OF B AND N
+            image_mask = self.masker_i(clipseg_mask[ind, ind].unsqueeze(1))  # Positive pair only
 
-        # step 1: forward the query images through the frozen CLIP vision encoder
-        masked_vision_outputs_pooled = checkpoint(self._vision_impl, image * image_mask, use_reentrant=False)
-        # masked_vision_outputs = self._vision_impl(image * image_mask)
+            # step 1: forward the query images through the frozen CLIP vision encoder
+            masked_vision_outputs_pooled = checkpoint(self._vision_impl, image * image_mask, use_reentrant=False)
+            # masked_vision_outputs = self._vision_impl(image * image_mask)
 
-        masked_image_emb = self.av_grounder.clip.visual_projection(masked_vision_outputs_pooled)
+            masked_image_emb = self.av_grounder.clip.visual_projection(masked_vision_outputs_pooled)
+        else:
+            masked_image_emb = []
+            for n in range(embedding.shape[0]):
+                image_mask = self.masker_i(clipseg_mask[:, n].unsqueeze(1))
+                masked_vision_outputs_pooled = checkpoint(self._vision_impl, image * image_mask, use_reentrant=False)
+                masked_image_emb.append(self.av_grounder.clip.visual_projection(masked_vision_outputs_pooled))
+            masked_image_emb = torch.cat(masked_image_emb, dim=1)
 
         return feature_masked_emb, masked_image_emb, positive_area, negative_area
 
@@ -333,15 +340,22 @@ class ACL(nn.Module):
             pred_emb_sil = kwargs.get('pred_emb_silence', None)
             out_dict_sil = {}
             if pred_emb_sil != None:
-                sil_v_f, sil_v_i, sil_p_area, sil_n_area = self.encode_masked_vision(image, pred_emb_sil.repeat(pred_emb.shape[0], 1))
+                sil_v_f, sil_v_i, sil_p_area, sil_n_area = self.encode_masked_vision(image, pred_emb_sil)
                 out_dict_sil = {'sil_v_f': sil_v_f, 'sil_v_i': sil_v_i, 'sil_p_area': sil_p_area, 'sil_n_area': sil_n_area}
 
             # basically forward for noise audio (only gaussian noise)
             pred_emb_noise = kwargs.get('pred_emb_noise', None)
             out_dict_noise = {}
             if pred_emb_noise != None:
-                noise_v_f, noise_v_i, noise_p_area, noise_n_area = self.encode_masked_vision(image, pred_emb_noise.repeat(pred_emb.shape[0], 1))
+                noise_v_f, noise_v_i, noise_p_area, noise_n_area = self.encode_masked_vision(image, pred_emb_noise)
                 out_dict_noise = {'noise_v_f': noise_v_f, 'noise_v_i': noise_v_i, 'noise_p_area': noise_p_area, 'noise_n_area': noise_n_area}
+
+            # forward for real san audios
+            pred_emb_real_san = kwargs.get('pred_emb_real_san', None)
+            out_dict_real_san = {}
+            if pred_emb_real_san != None:
+                rsan_v_f, rsan_v_i, rsan_p_area, rsan_n_area = self.encode_masked_vision(image, pred_emb_real_san)
+                out_dict_real_san = {'rsan_v_f': rsan_v_f, 'rsan_v_i': rsan_v_i, 'rsan_p_area': rsan_p_area, 'rsan_n_area': rsan_n_area}
 
             # forward for noisy audio (original + noise)
             pred_emb_noisy = kwargs.get('pred_emb_noisy', None)
@@ -352,7 +366,7 @@ class ACL(nn.Module):
 
             # finally forward for original audios
             v_f, v_i, p_area, n_area = self.encode_masked_vision(image, pred_emb)
-            out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
+            out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise, **out_dict_real_san}
 
         else:
             out_dict = {}
