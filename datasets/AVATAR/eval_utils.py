@@ -52,7 +52,7 @@ class Evaluator(object):
         """
         self._evaluate_batch(heatmap, 'std', thr, target)
 
-        sil_heatmap = kwargs.get('sil_heatmap', None)
+        sil_heatmap = kwargs.get('silence_heatmap', None)
         if sil_heatmap != None:
             self._evaluate_batch(sil_heatmap, 'sil', thr, target)
 
@@ -60,23 +60,31 @@ class Evaluator(object):
         if noise_heatmap != None:
             self._evaluate_batch(noise_heatmap, 'noise', thr, target)
 
-    def _evaluate_batch(self, heatmap, metric, thr, target):
+    def _evaluate_batch(self, heatmap, metric, thr_param, gt):
         thrs = []
 
-        for j in range(heatmap.size(0)):
-            infer = heatmap[j]
-            if thr is None:
-                thrs.append(np.sort(infer.detach().cpu().numpy().flatten())[int(infer.shape[1] * infer.shape[2] / 2)])
+        for i in range(heatmap.size(0)):
+            pred = heatmap[i].detach().cpu()
+            target = gt[i].cpu()
+            if thr_param is None:
+                thr = np.sort(pred.flatten())[int(pred.shape[1] * pred.shape[2]) // 2]
+            elif thr_param == 'adap':
+                gt_nums = (target!=0).sum()
+                if int(gt_nums) == 0:
+                    gt_nums = int(target.shape[1] * target.shape[2]) // 2
+                thr = np.sort(pred.flatten())[int(pred.shape[1] * pred.shape[2]) - int(gt_nums)] # adap
             else:
-                thrs.append(thr)
+                thr = thr_param
+
+            thrs.append(thr)
 
             if metric in ('sil', 'noise'):
-                self.cal_pIA(infer, metric, thr)
+                self.cal_pIA(pred, metric, thr)
             else:
-                self.cal_CIOU(infer, target[j], metric, thr)
+                self.cal_CIOU(pred, target, metric, thr)
 
         if metric == 'std':
-            infers, gts = heatmap.squeeze(1), target.squeeze(1)
+            infers, gts = heatmap.squeeze(1), gt.squeeze(1)
             self.mask_iou(infers, gts, metric, thrs)
             self.Eval_Fmeasure(infers, gts, metric)
 

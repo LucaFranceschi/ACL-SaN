@@ -56,7 +56,6 @@ def acl_i(v_i: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **k
 
     return loss
 
-
 def acl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **kwargs) -> torch.Tensor:
     '''
     Compute the feature-level audio-grounded contrastive learning (ACL_F) loss.
@@ -71,22 +70,21 @@ def acl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **k
     '''
     B, _, C = v_f.size()
 
-    logits = torch.einsum('bnc,bc->bn', F.normalize(v_f, dim=2), F.normalize(pred_emb))
+    full_v_f = [v_f] # [B, N=B, C]
+    full_v_f.append(kwargs.get('sil_v_f', None)) # [B, N=1, C]
+    full_v_f.append(kwargs.get('noise_v_f', None)) # [B, N=1, C]
+    full_v_f.append(kwargs.get('rsan_v_f', None)) # [B, N=5 or so, C]
+    full_v_f = [val for val in full_v_f if val is not None]
+    full_v_f = torch.cat(full_v_f, dim=1) # [B, N', C]
 
-    neg_audios = []
-    neg_audios.append(kwargs.get('pred_emb_san', None))
-    neg_audios.append(kwargs.get('pred_emb_real_san', None))
-    neg_audios = [val for val in neg_audios if val is not None]
-    if len(neg_audios) > 0:
-        neg_audios = torch.cat(neg_audios, dim=0)
+    full_pred_emb = [pred_emb] # [B, C]
+    full_pred_emb.append(kwargs.get('pred_emb_silence', None)) # [N=1+1, C]
+    full_pred_emb.append(kwargs.get('pred_emb_noise', None)) # [N=1+1, C]
+    full_pred_emb.append(kwargs.get('pred_emb_real_san', None)) # [N=5 or so, C]
+    full_pred_emb = [val for val in full_pred_emb if val is not None]
+    full_pred_emb = torch.cat(full_pred_emb, dim=0) # [N', C]
 
-        # neg_audios has shape [K, C]
-        # b is already broadcasted in the uncommented version
-        # neg_audios = neg_audios.unsqueeze(1).repeat(1, B, 1)
-        # neg_sim = torch.einsum('bnc,kbc->bkn', F.normalize(v_f, dim=2), neg_audios)
-        neg_sim = torch.einsum('bnc,kc->bkn', F.normalize(v_f, dim=2), F.normalize(neg_audios, dim=1)).mean(dim=2)
-
-        logits = torch.cat((logits, neg_sim), dim=1)
+    logits = torch.einsum('bnc,nc->bn', F.normalize(full_v_f, dim=2), F.normalize(full_pred_emb, dim=1))
 
     labels = torch.eye(logits.shape[0], logits.shape[1], device=pred_emb.device)
 
@@ -94,20 +92,35 @@ def acl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **k
 
     return loss
 
-def silence_l(noise_n_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, san = False, **kwargs) -> torch.Tensor:
+def silence_l(noise_n_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, **kwargs) -> torch.Tensor:
     loss = torch.zeros([]).to(v_f.device) # using here v_f only to get device since it should be guaranteed to exist
-    if san:
-        loss = torch.abs(noise_n_area - n_thr)
+    loss = torch.abs(noise_n_area - n_thr)
     return loss
 
-def noise_l(sil_n_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, san = False, **kwargs) -> torch.Tensor:
+def noise_l(sil_n_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, **kwargs) -> torch.Tensor:
     loss = torch.zeros([]).to(v_f.device)
-    if san:
-        loss = torch.abs(sil_n_area - n_thr)
+    loss = torch.abs(sil_n_area - n_thr)
     return loss
 
 def diff_san_l(v_f: torch.Tensor, pred_emb: torch.Tensor, noisy_v_f: torch.Tensor, pred_emb_noisy: torch.Tensor, **kwargs) -> torch.Tensor:
-    logits = torch.einsum('bnc,bc->bn', F.normalize(v_f, dim=2), F.normalize(pred_emb))
-    logits_noisy = torch.einsum('bnc,bc->bn', F.normalize(noisy_v_f, dim=2), F.normalize(pred_emb_noisy))
+    logits = torch.einsum('bnc,bc->bn', F.normalize(v_f, dim=2), F.normalize(pred_emb, dim=1))
+    logits_noisy = torch.einsum('bnc,bc->bn', F.normalize(noisy_v_f, dim=2), F.normalize(pred_emb_noisy, dim=1))
 
     return F.mse_loss(logits_noisy, logits)
+
+def adcl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **kwargs) -> torch.Tensor:
+    B, _ = v_f.size() # remember v_f is logits and has shape [B, B+1]
+
+    logits = [v_f]
+    logits.append(kwargs.get('sil_v_f', None))
+    logits.append(kwargs.get('noise_v_f', None))
+    logits = [val for val in logits if val is not None]
+
+    logits = torch.cat(logits, dim=1)
+
+    labels = torch.zeros_like(logits, device=v_f.device)
+    labels[:, 0] = 1
+
+    loss = 0.5 * (F.cross_entropy(logits * beta, labels) + F.cross_entropy(logits.T * beta, labels.T))
+
+    return loss

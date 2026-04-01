@@ -10,15 +10,14 @@ nvidia-smi
 
 REPO="/home/lfranceschi/repos/ACL-SSL"
 DATA=$REPO/datasets
-SAVE_PATH=$REPO/train_outputs/$JOB_ID
+SAVE_PATH=$REPO/train_outputs/$JOB_ID/$SLURM_JOBID
 
 cd $REPO
 
 mkdir -p $SAVE_PATH
 
-set -a; source config/.env; set +a
-
-python eval_ACL.py \
+# python eval_ACL.py \
+python -m torch.distributed.launch --nnodes=1 --nproc_per_node=2 --master_port 12345 eval_ACL.py \
 --model_name ACL_ViT16 \
 --model_path $REPO/pretrain \
 --train_config $EXPERIMENT_VERSION \
@@ -28,4 +27,5 @@ python eval_ACL.py \
 --vggsound_path $DATA/vggsound \
 --avatar_path $DATA/AVATAR \
 --san_path $DATA/silence_and_noise/audio \
+--model_weights $REPO/train_outputs/$JOB_ID \
 --save_path $SAVE_PATH

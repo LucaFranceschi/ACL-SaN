@@ -173,10 +173,11 @@ class VGGSoundDataset(Dataset):
         ''' Transform '''
         if self.eval_noise_tr == None:
             audio = self.audio_transform(audio_file) if self.set_length != 0 else None
-            noisy_audios = self.audio_transform(audio_file, force=True) if self.set_length != 0 else None
         else:
             audio = self.eval_noise_tr(audio_file) if self.set_length != 0 else None
         image = self.image_transform(image_file) if self.use_image else None
+
+        noisy_audios = self.audio_transform(audio_file, force=True) if self.set_length != 0 else None
 
         out = {'images': image, 'audios': audio, 'noisy_audios': noisy_audios, 'labels': label, 'ids': file_id}
         out = {key: value for key, value in out.items() if value is not None}

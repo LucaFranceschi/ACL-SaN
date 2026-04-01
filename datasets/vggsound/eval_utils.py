@@ -32,7 +32,7 @@ class Evaluator(object):
             None
         """
 
-        sil_heatmap = kwargs.get('sil_heatmap', None)
+        sil_heatmap = kwargs.get('silence_heatmap', None)
         if sil_heatmap != None:
             self._evaluate_batch(sil_heatmap, 'sil', thr)
 
@@ -40,12 +40,17 @@ class Evaluator(object):
         if noise_heatmap != None:
             self._evaluate_batch(noise_heatmap, 'noise', thr)
 
-    def _evaluate_batch(self, heatmap, metric, thr):
-        for j in range(heatmap.size(0)):
-            infer = heatmap[j]
-            if thr is None:
-                thr = np.sort(infer.detach().cpu().numpy().flatten())[int(infer.shape[1] * infer.shape[2] / 2)]
-            self.cal_pIA(infer, metric, thr)
+    def _evaluate_batch(self, heatmap, metric, thr_param):
+        for i in range(heatmap.size(0)):
+            pred = heatmap[i].detach().cpu()
+            if thr_param is None:
+                thr = np.sort(pred.flatten())[int(pred.shape[1] * pred.shape[2]) // 2]
+            elif thr_param == 'adap':
+                raise NotImplementedError('This dataset does not have GT')
+            else:
+                thr = thr_param
+
+            self.cal_pIA(pred, metric, thr)
 
     def cal_pIA(self, infer: torch.Tensor, metric: str, thres: float = 0.01):
         '''

@@ -9,7 +9,7 @@
 #SBATCH --exclude="node025,node031"
 #SBATCH --output=outputs/slurm-%j.out
 #SBATCH --error=outputs/slurm-%j.err
-#SBATCH --time=10-00:00:00
+#SBATCH --time=7-00:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=luca.franceschi01@estudiant.upf.edu
 

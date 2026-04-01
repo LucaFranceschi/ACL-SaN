@@ -1,6 +1,5 @@
 #!/bin/bash
 
-#SBATCH --job-name=acl-train2
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task 4
@@ -9,7 +8,7 @@
 #SBATCH --exclude="node025,node032"
 #SBATCH --output=outputs/slurm-%j.out
 #SBATCH --error=outputs/slurm-%j.err
-#SBATCH --time=5-00:00:00
+#SBATCH --time=14-00:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=luca.franceschi01@estudiant.upf.edu
 

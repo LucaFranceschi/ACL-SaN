@@ -1,4 +1,4 @@
-model: ACL
+model: ADCL
 
 common:
   train_data: vggsound
@@ -6,18 +6,16 @@ common:
   batch_size: 16
   input_resolution: 352
   ground_truth_resolution: 224
-  num_workers: 4
+  num_workers: 2
   seed: 0
   loss:
-    - acl_i
-    - acl_f
+    - adcl_f
     - area_reg
   loss_w:
     - 1
     - 1
-    - 1
-  san: True
-  san_real: True
+  san: False
+  san_real: False
   san_added_noise_tr: False
   san_added_noise_schedule_k: 5
 

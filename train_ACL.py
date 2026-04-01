@@ -201,7 +201,6 @@ def main(model_name, model_path, exp_name, train_config_name, data_path_dict, sa
                 placeholder_tokens = placeholder_tokens.repeat((train_dataloader.batch_size, 1))
                 audio_driven_embedding = module.encode_audio(audios.to(module.device), placeholder_tokens,
                                                              text_pos_at_prompt, prompt_length)
-
                 if USE_CUDA:
                     audio_driven_embedding = audio_driven_embedding.half()
 
@@ -215,16 +214,17 @@ def main(model_name, model_path, exp_name, train_config_name, data_path_dict, sa
 
                     audio_embeddings['pred_emb_noisy'] = audio_driven_embedding_noisy
 
-                if 'silence_l' in args.loss and args.san:
+                if args.san:
                     audio_embeddings['pred_emb_silence'] = san_dict['pred_emb_san'][0].unsqueeze(0)
-
-                if 'noise_l' in args.loss and args.san:
                     audio_embeddings['pred_emb_noise'] = san_dict['pred_emb_san'][1].unsqueeze(0)
+
+                if args.san_real:
+                    audio_embeddings['pred_emb_real_san'] = san_dict['pred_emb_real_san']
 
                 # contains also SaN outputs if set
                 out_dict = module(images.to(module.device), resolution=args.input_resolution, **audio_embeddings)
 
-                loss_args = {**out_dict, **san_dict, **audio_embeddings}
+                loss_args = {**out_dict, **audio_embeddings}
 
                 for j, loss_name in enumerate(args.loss):
                     loss_dict[loss_name] = getattr(import_module('utils.loss'), loss_name)(**loss_args) * args.loss_w[j]
