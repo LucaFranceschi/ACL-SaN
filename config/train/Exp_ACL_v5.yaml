@@ -20,7 +20,6 @@ common:
     - 1
     - 1
     - 1
-    - 1
   san: True
   san_real: True
   san_added_noise_tr: True
