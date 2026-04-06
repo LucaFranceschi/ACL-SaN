@@ -118,7 +118,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
         'best_AUC_N_noise': {'epoch': 0, 'AUC': 0.0, 'thr': 0.0}
     }
 
-    for epoch, weights_path in epoch_dict:
+    for epoch, weights_path in epoch_dict.items():
         # if epoch not in [16, 18, 19]:
         #     continue
         print(f'Testing epoch {epoch}: {weights_path}')

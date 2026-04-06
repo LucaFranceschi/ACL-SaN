@@ -103,53 +103,46 @@ def eval_vggsound_validation(
     pbar = tqdm(val_dataloader, desc=f"Validation Epoch [{epoch}/{args.epoch}]", disable=(rank != 0))
 
     for step, data in enumerate(pbar):
-        images, audios, name = data['images'], data['audios'], data['ids']
+        images, audios, labels = data['images'], data['audios'], data['labels']
         noisy_audios = data['noisy_audios']
 
         if use_cuda:
             images = images.half()
 
+        prompt_template, text_pos_at_prompt, prompt_length = get_prompt_template()
+
         audio_embeddings = {}
 
         with autocast_fn():
-
+            # Train step
             placeholder_tokens = model.get_placeholder_token(prompt_template.replace('{}', ''))
             placeholder_tokens = placeholder_tokens.repeat((val_dataloader.batch_size, 1))
-            audio_driven_embedding = model.encode_audio(
-                audios.to(model.device),
-                placeholder_tokens,
-                text_pos_at_prompt,
-                prompt_length
-            )
-
+            audio_driven_embedding = model.encode_audio(audios.to(model.device), placeholder_tokens,
+                                                            text_pos_at_prompt, prompt_length)
             if use_cuda:
                 audio_driven_embedding = audio_driven_embedding.half()
 
             audio_embeddings['pred_emb'] = audio_driven_embedding
 
             if 'diff_san_l' in args.loss:
-                audio_driven_embedding_noisy = model.encode_audio(
-                    noisy_audios.to(model.device),
-                    placeholder_tokens,
-                    text_pos_at_prompt,
-                    prompt_length
-                )
-
+                audio_driven_embedding_noisy = model.encode_audio(noisy_audios.to(model.device), placeholder_tokens,
+                                                            text_pos_at_prompt, prompt_length)
                 if use_cuda:
                     audio_driven_embedding_noisy = audio_driven_embedding_noisy.half()
 
                 audio_embeddings['pred_emb_noisy'] = audio_driven_embedding_noisy
 
-            if 'silence_l' in args.loss and args.san:
+            if args.san:
                 audio_embeddings['pred_emb_silence'] = san_dict['pred_emb_san'][0].unsqueeze(0)
-
-            if 'noise_l' in args.loss and args.san:
                 audio_embeddings['pred_emb_noise'] = san_dict['pred_emb_san'][1].unsqueeze(0)
+
+            if args.san_real:
+                audio_embeddings['pred_emb_real_san'] = san_dict['pred_emb_real_san']
 
             # contains also SaN outputs if set
             out_dict = model.forward_for_validation(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
 
-            loss_args = {**out_dict, **san_dict, **audio_embeddings}
+            loss_args = {**out_dict, **audio_embeddings}
 
             for j, loss_name in enumerate(args.loss):
                 loss_dict[loss_name] = getattr(import_module('utils.loss'), loss_name)(**loss_args) * args.loss_w[j]
@@ -162,15 +155,15 @@ def eval_vggsound_validation(
             seg_image = ((seg.squeeze().cpu().numpy()) * 255).astype(np.uint8)
 
             os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
+            cv2.imwrite(f'{result_dir}/heatmap/{labels[j]}.jpg', seg_image)
 
             if step < 2 and wandb_run and rank == 0:
                 heatmap_image = cv2.applyColorMap(((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8), cv2.COLORMAP_JET)
-                original_image = Image.open(os.path.join(val_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
+                original_image = Image.open(os.path.join(val_dataloader.dataset.image_path, labels[j] + '.jpg')).resize(gt_resolution)
                 overlaid_image = cv2.addWeighted(np.array(original_image), 0.5, heatmap_image, 0.5, 0)
 
                 wandb_run.log({
-                    f'images/val_overlaid/{name[j]}.jpg': wandb.Image(overlaid_image),
+                    f'images/val_overlaid/{labels[j]}.jpg': wandb.Image(overlaid_image),
                     'trainer/epoch': epoch
                 })
 
@@ -259,7 +252,7 @@ def eval_vggsound_agg(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
@@ -434,7 +427,7 @@ def eval_vggss_get_thresholds(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
@@ -559,7 +552,7 @@ def eval_vggss_agg(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
@@ -755,7 +748,7 @@ def eval_avsbench_agg(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
@@ -939,7 +932,7 @@ def eval_flickr_agg(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
@@ -1120,7 +1113,7 @@ def eval_exvggss_agg(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
@@ -1288,7 +1281,7 @@ def eval_exflickr_agg(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
@@ -1504,7 +1497,7 @@ def eval_avatar_agg(
         real_san_audio_path,
         test_dataloader.dataset.SAMPLE_RATE,
         test_dataloader.dataset.set_length,
-        use_cuda=use_cuda
+        use_cuda=False
     )
 
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}

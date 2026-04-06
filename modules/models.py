@@ -416,9 +416,16 @@ class ACL(nn.Module):
             noisy_v_f, noisy_v_i, noisy_p_area, noisy_n_area = self.encode_masked_vision(image, pred_emb_noisy)
             out_dict_noisy = {'noisy_v_f': noisy_v_f, 'noisy_v_i': noisy_v_i, 'noisy_p_area': noisy_p_area, 'noisy_n_area': noisy_n_area}
 
+        # forward for real san audios
+        pred_emb_real_san = kwargs.get('pred_emb_real_san', None)
+        out_dict_real_san = {}
+        if pred_emb_real_san != None:
+            rsan_v_f, rsan_v_i, rsan_p_area, rsan_n_area = self.encode_masked_vision(image, pred_emb_real_san)
+            out_dict_real_san = {'rsan_v_f': rsan_v_f, 'rsan_v_i': rsan_v_i, 'rsan_p_area': rsan_p_area, 'rsan_n_area': rsan_n_area}
+
         # finally forward for original audios
         v_f, v_i, p_area, n_area = self.encode_masked_vision(image, pred_emb)
-        out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise}
+        out_dict = {'v_f': v_f, 'v_i': v_i, 'p_area': p_area, 'n_area': n_area, **out_dict_noisy, **out_dict_sil, **out_dict_noise, **out_dict_real_san}
 
         seg_logit = self.forward_module(image, pred_emb, resolution)
         heatmap = self.masker_i(seg_logit, infer=True)
@@ -453,14 +460,6 @@ class ADCL(ACL):
     Audio-DeGrounded Contrastive Learning (ACL) model. Removes the CLIPSeg decoder step to evaluate
     how much does it affect the final ACL model.
     '''
-    # v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
-
-    # NO USAR AVERAGE DIRECTAMENTE, USAR ANTES
-    # THE HARD WAY / LVS
-    # this averages the channels
-    # this wont work for the contrastive loss. check how to do that.
-
-    # mask hard negatives + easy negatives
     def __init__(self, conf_file, device, model_path):
         super().__init__(conf_file, device, model_path)
 
