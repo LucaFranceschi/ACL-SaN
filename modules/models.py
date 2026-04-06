@@ -399,14 +399,14 @@ class ACL(nn.Module):
         pred_emb_sil = kwargs.get('pred_emb_silence', None)
         out_dict_sil = {}
         if pred_emb_sil != None:
-            sil_v_f, sil_v_i, sil_p_area, sil_n_area = self.encode_masked_vision(image, pred_emb_sil.repeat(pred_emb.shape[0], 1))
+            sil_v_f, sil_v_i, sil_p_area, sil_n_area = self.encode_masked_vision(image, pred_emb_sil)
             out_dict_sil = {'sil_v_f': sil_v_f, 'sil_v_i': sil_v_i, 'sil_p_area': sil_p_area, 'sil_n_area': sil_n_area}
 
         # basically forward for noise audio (only gaussian noise)
         pred_emb_noise = kwargs.get('pred_emb_noise', None)
         out_dict_noise = {}
         if pred_emb_noise != None:
-            noise_v_f, noise_v_i, noise_p_area, noise_n_area = self.encode_masked_vision(image, pred_emb_noise.repeat(pred_emb.shape[0], 1))
+            noise_v_f, noise_v_i, noise_p_area, noise_n_area = self.encode_masked_vision(image, pred_emb_noise)
             out_dict_noise = {'noise_v_f': noise_v_f, 'noise_v_i': noise_v_i, 'noise_p_area': noise_p_area, 'noise_n_area': noise_n_area}
 
         # forward for noisy audio (original + noise)
