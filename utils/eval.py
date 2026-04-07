@@ -103,7 +103,7 @@ def eval_vggsound_validation(
     pbar = tqdm(val_dataloader, desc=f"Validation Epoch [{epoch}/{args.epoch}]", disable=(rank != 0))
 
     for step, data in enumerate(pbar):
-        images, audios, labels = data['images'], data['audios'], data['labels']
+        images, audios, name = data['images'], data['audios'], data['ids']
         noisy_audios = data['noisy_audios']
 
         if use_cuda:
@@ -155,15 +155,15 @@ def eval_vggsound_validation(
             seg_image = ((seg.squeeze().cpu().numpy()) * 255).astype(np.uint8)
 
             os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap/{labels[j]}.jpg', seg_image)
+            cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
 
             if step < 2 and wandb_run and rank == 0:
                 heatmap_image = cv2.applyColorMap(((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8), cv2.COLORMAP_JET)
-                original_image = Image.open(os.path.join(val_dataloader.dataset.image_path, labels[j] + '.jpg')).resize(gt_resolution)
+                original_image = Image.open(os.path.join(val_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
                 overlaid_image = cv2.addWeighted(np.array(original_image), 0.5, heatmap_image, 0.5, 0)
 
                 wandb_run.log({
-                    f'images/val_overlaid/{labels[j]}.jpg': wandb.Image(overlaid_image),
+                    f'images/val_overlaid/{name[j]}.jpg': wandb.Image(overlaid_image),
                     'trainer/epoch': epoch
                 })
 
