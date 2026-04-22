@@ -47,18 +47,22 @@ class Experiment(object):
     def load_eval_inference_info(self, path_to_numpy_dir):
         if path_to_numpy_dir not in self.loaded_dirs:
             self.infer_info = load_infer_info(path_to_numpy_dir, self.name)
-            self.thresholds = get_thresholds(self.infer_info)
+            # self.thresholds = get_thresholds(self.infer_info) # precision errors make this impossible
             self.loaded_dirs.append(path_to_numpy_dir)
 
-    def print_metrics(self, epoch, thr):
-        print_metrics(self.metrics, epoch=epoch, thr=thr)
+    def print_metrics(self, epoch, thr, seg_item):
+        if self.thresholds and seg_item in self.thresholds[epoch] and thr in self.thresholds[epoch][seg_item]:
+            thr = str(self.thresholds[epoch][seg_item][thr])
+        print_metrics(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item)
 
-    def print_metrics_noisy(self, epoch, thr):
-        print_metrics_noisy(self.metrics, epoch=epoch, thr=thr)
+    def print_metrics_noisy(self, epoch, thr, seg_item):
+        if self.thresholds and seg_item in self.thresholds[epoch] and thr in self.thresholds[epoch][seg_item]:
+            thr = str(self.thresholds[epoch][seg_item][thr])
+        print_metrics_noisy(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item)
 
-    def plot_all_metrics(self, epoch):
-        plot_all_metrics(self.metrics[self.metrics['epoch'] == epoch])
+    def plot_all_metrics(self, epoch, thr, seg_item):
+        plot_all_metrics(self.metrics[self.metrics['epoch'] == epoch], thr=thr, seg_item=seg_item, experiment_name=self.name, epoch=epoch)
 
-    def boxplots_by_dataset(self, dataset_name, epochs, th_name, min_max='max', seg_item='m_i_seg'):
+    def boxplots_by_dataset(self, dataset_name, epochs, th_name, seg_item, min_max='max'):
         boxplots_by_dataset(self.infer_info, dataset_name, self.thresholds, epochs,
-                            th_name=th_name, min_max=min_max, seg_item=seg_item)
+                            th_name=th_name, min_max=min_max, seg_item=seg_item, experiment_name=self.name)

@@ -9,14 +9,26 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
-def print_metrics(df, epoch='all', thr=0.5):
-    filtered_df = df[
-        (df['threshold'] == thr) &
-        (df['metric'].isin(['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N', 'mIoU', 'Fmeasure']))
-    ]
+COLOR_PALETTE = {
+    'vggss': '#bcbd22',
+    'flickr': '#e377c2',
+    'avatar_one_seg': '#ff7f0e',
+    'avs_s4': '#d62728',
+    'avs_ms3': '#2ca02c',
+    'avatar_one_bb': '#1f77b4',
+    'exvggss': '#8c564b',
+    'exflickr': '#9467bd',
+    'vggsound': '#7f7f7f',
+}
 
-    if epoch != 'all':
-        filtered_df = filtered_df[filtered_df['epoch'] == epoch]
+def print_metrics(df, epoch, thr:str='0.5', seg_item='m_i'):
+    filtered_df = df[df['epoch'] == epoch].copy()
+
+    filtered_df = filtered_df[
+        (filtered_df['threshold'] == thr) &
+        (filtered_df["seg_item"] == seg_item) &
+        (filtered_df['metric'].isin(['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N', 'mIoU', 'Fmeasure']))
+    ]
 
     # 2. Pivot the data
     # index: what you want as rows
@@ -29,10 +41,10 @@ def print_metrics(df, epoch='all', thr=0.5):
     )
 
     # Define the desired order for each audio_type
-    # std_cols = [('std', m) for m in ['cIoU_hat', 'AUC', 'mIoU', 'Fmeasure']]
-    std_cols = [('std', m) for m in ['cIoU_hat', 'AUC']]
-    silence_cols = [('silence', m) for m in ['pIA_hat', 'AUC_N']]
-    noise_cols = [('noise', m) for m in ['pIA_hat', 'AUC_N']]
+    # std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC', 'mIoU', 'Fmeasure']]
+    std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC']]
+    silence_cols = [('sil', m) for m in ['pIA_hat', 'AUC_N']]
+    noise_cols = [('noi', m) for m in ['pIA_hat', 'AUC_N']]
 
     # Combine them into one ordered list
     target_columns = std_cols + silence_cols + noise_cols
@@ -49,15 +61,15 @@ def print_metrics(df, epoch='all', thr=0.5):
     print(pivot_df)
     return pivot_df
 
-def print_metrics_noisy(df, epoch='all', thr=0.5):
+def print_metrics_noisy(df, epoch, thr:str='0.5', seg_item='m_i'):
 
-    filtered_df = df[
-        (df['threshold'] == thr) &
-        (df['metric'].isin(['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N', 'mIoU', 'Fmeasure']))
+    filtered_df = df[df['epoch'] == epoch].copy()
+
+    filtered_df = filtered_df[
+        (filtered_df['threshold'] == thr) &
+        (filtered_df["seg_item"] == seg_item) &
+        (filtered_df['metric'].isin(['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N', 'mIoU', 'Fmeasure']))
     ]
-
-    if epoch != 'all':
-        filtered_df = filtered_df[filtered_df['epoch'] == epoch]
 
     # 2. Pivot the data
     # index: what you want as rows
@@ -70,10 +82,10 @@ def print_metrics_noisy(df, epoch='all', thr=0.5):
     )
 
     # Define the desired order for each audio_type
-    # std_cols = [('std', m) for m in ['cIoU_hat', 'AUC', 'mIoU', 'Fmeasure']]
-    std_cols = [('std', s, m) for s in [5.0, 10.0, 20.0, -1] for m in ['cIoU_hat', 'AUC']]
-    silence_cols = [('silence', -1, m) for m in ['pIA_hat', 'AUC_N']]
-    noise_cols = [('noise', -1, m) for m in ['pIA_hat', 'AUC_N']]
+    # std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC', 'mIoU', 'Fmeasure']]
+    std_cols = [('pos', s, m) for s in [5.0, 10.0, 20.0, -1] for m in ['cIoU_hat', 'AUC']]
+    silence_cols = [('sil', -1, m) for m in ['pIA_hat', 'AUC_N']]
+    noise_cols = [('noi', -1, m) for m in ['pIA_hat', 'AUC_N']]
 
     # Combine them into one ordered list
     target_columns = std_cols + silence_cols + noise_cols
@@ -102,9 +114,9 @@ def print_runs(df, thr=0.5):
         values='value',
     )
 
-    std_cols = [('std', m) for m in ['cIoU_hat', 'AUC']]
-    silence_cols = [('silence', m) for m in ['pIA_hat', 'AUC_N']]
-    noise_cols = [('noise', m) for m in ['pIA_hat', 'AUC_N']]
+    std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC']]
+    silence_cols = [('sil', m) for m in ['pIA_hat', 'AUC_N']]
+    noise_cols = [('noi', m) for m in ['pIA_hat', 'AUC_N']]
 
     target_columns = std_cols + silence_cols + noise_cols
 
@@ -118,37 +130,37 @@ def print_runs(df, thr=0.5):
     print(pivot_df)
     return pivot_df
 
-def plot_all_metrics(df):
-    color_palette = {}
-    for dataset, color in zip(sorted(df['dataset'].unique()), sns.color_palette(n_colors=df['dataset'].nunique()).as_hex()):
-        color_palette[dataset] = color
+def plot_all_metrics(df, thr='adap', seg_item = 'm_i', experiment_name = '', epoch = ''):
+    df_filtered = df[df['seg_item'] == seg_item].copy()
+    # color_palette = {}
+    # for dataset, color in zip(sorted(df_filtered['dataset'].unique()), sns.color_palette(n_colors=df_filtered['dataset'].nunique()).as_hex()):
+    #     color_palette[dataset] = color
     # 1. Setup the style
     sns.set_theme(style="whitegrid")
 
     # 2. Define strict mappings
     # Mapping line styles to audio types
     style_map = {
-        'std': (None, None),  # Solid
-        'noise': (5, 5),      # Dashed
-        'silence': (1, 2)     # Dotted
+        'pos': (None, None),  # Solid
+        'noi': (5, 5),      # Dashed
+        'sil': (1, 2)     # Dotted
     }
 
     # 3. Get list of unique metrics
-    # metrics = df['metric'].unique()
-    metrics = ['AUC', 'AUC_N']
+    # metrics = df_filtered['metric'].unique()
+    metrics = ['AUC', 'AUC_N', 'pIA_hat']
 
     for m in metrics:
-        subset = df[df['metric'] == m].copy()
-        adap_subset = subset[subset['threshold'] == 'adap']
-        none_subset = subset[subset['threshold'] == 'None']
+        subset = df_filtered[df_filtered['metric'] == m]
+        thr_subset = subset[subset['threshold'] == thr]
         subset = subset[~((subset['threshold'] == 'adap') | (subset['threshold'] == 'None'))]
         subset['threshold'] = subset['threshold'].astype(float)
         subset = subset.sort_values('threshold')
 
         # Build per-dataset adap value map for this metric.
         adap_values = {}
-        for dataset in adap_subset['dataset'].unique():
-            vals = adap_subset[adap_subset['dataset'] == dataset]['value']
+        for dataset in thr_subset['dataset'].unique():
+            vals = thr_subset[thr_subset['dataset'] == dataset]['value']
             if len(vals) == 0:
                 continue
             try:
@@ -156,15 +168,15 @@ def plot_all_metrics(df):
             except (ValueError, TypeError):
                 continue
 
-        plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(10, 6))
 
         # 4. Create the lineplot with the fixed palette
         ax = sns.lineplot(
-            data=subset,
+            data=subset.sort_values('dataset'),
             x='threshold',
             y='value',
             hue='dataset',
-            palette=color_palette,  # Force consistent colors
+            palette=COLOR_PALETTE,  # Force consistent colors
             style='audio_type',
             dashes=style_map,
             markers=True,
@@ -176,10 +188,10 @@ def plot_all_metrics(df):
             for text in legend.texts:
                 label = text.get_text()
                 if label in adap_values:
-                    text.set_text(f"{label} (adap={adap_values[label]:.3f})")
+                    text.set_text(f"{label} ({thr}={adap_values[label]:.3f})")
 
         # 5. Formatting
-        plt.title(f"Metric: {m}", fontsize=15, fontweight='bold')
+        plt.title(f"{experiment_name}@{epoch}: {m} ({seg_item})", fontsize=15, fontweight='bold')
         plt.xlabel("Threshold")
         plt.ylabel("Value")
         plt.xticks(np.arange(0, 1.1, 0.1))
@@ -190,12 +202,13 @@ def plot_all_metrics(df):
         # plt.ylim(np.true_divide(np.floor(subset['value'].min() * 10**precision), 10**precision),
         # np.true_divide(np.ceil(subset['value'].max() * 10**precision), 10**precision))
 
-
         plt.tight_layout()
-
+        os.makedirs(f'outputs/{experiment_name}', exist_ok=True)
+        fig.savefig(f"outputs/{experiment_name}/{int(datetime.timestamp(datetime.now()))}.png", bbox_inches='tight', dpi=300)
         plt.show()
 
 def plot_all_experiments(experiments):
+    raise NotImplementedError('Changes v_d and m_i')
     merged_df = pd.concat([e.metrics[e.metrics['epoch'] == e.best_epoch] for e in experiments.values()])
 
     merged_df = merged_df[
@@ -205,9 +218,9 @@ def plot_all_experiments(experiments):
 
     df = merged_df[merged_df['run'] != 'baseline']
 
-    color_palette = {}
-    for dataset, color in zip(sorted(df['run'].unique()), sns.color_palette(n_colors=df['run'].nunique()).as_hex()):
-        color_palette[dataset] = color
+    # color_palette = {}
+    # for dataset, color in zip(sorted(df['run'].unique()), sns.color_palette(n_colors=df['run'].nunique()).as_hex()):
+    #     color_palette[dataset] = color
 
     # 1. Setup the style
     sns.set_theme(style="whitegrid")
@@ -215,9 +228,9 @@ def plot_all_experiments(experiments):
     # 2. Define strict mappings
     # Mapping line styles to audio types
     style_map = {
-        'std': (None, None),  # Solid
-        'noise': (5, 5),      # Dashed
-        'silence': (1, 2)     # Dotted
+        'pos': (None, None),  # Solid
+        'noi': (5, 5),      # Dashed
+        'sil': (1, 2)     # Dotted
     }
 
     df = df.sort_values('threshold')
@@ -241,11 +254,11 @@ def plot_all_experiments(experiments):
 
         # 4. Create the lineplot with the fixed palette
         ax = sns.lineplot(
-            data=subset,
+            data=subset.sort_values('dataset'),
             x='epoch',
             y='value',
             hue='run',
-            palette=color_palette,  # Force consistent colors
+            palette=COLOR_PALETTE,  # Force consistent colors
             style='audio_type',
             dashes=style_map,
             markers=True,
@@ -269,7 +282,7 @@ def plot_all_experiments(experiments):
 
         plt.show()
 
-def boxplots_by_dataset(infer_info_df, dataset_name, threshold_dict, epochs, th_name = 'max_neg', min_max = 'max', seg_item = 'm_i_seg'):
+def boxplots_by_dataset(infer_info_df, dataset_name, threshold_dict, epochs, th_name = 'max_neg', min_max = 'max', seg_item = 'm_i', experiment_name = ''):
     df = infer_info_df[(infer_info_df["dataset"] == dataset_name) &
                        (infer_info_df["min_max"] == min_max) &
                        (infer_info_df["seg_item"] == seg_item)].copy()
@@ -292,17 +305,18 @@ def boxplots_by_dataset(infer_info_df, dataset_name, threshold_dict, epochs, th_
     )
 
     for ax, epoch in zip(fig.axes.flat, col_order):
-        th_value = threshold_dict.get(int(epoch), {}).get(th_name)
-        print(threshold_dict.get(int(epoch), {}))
+        th_value = threshold_dict.get(int(epoch), {}).get(seg_item, {}).get(th_name)
+        print(threshold_dict.get(int(epoch), {}).get(seg_item, {}))
         if th_value is not None:
             ax.axhline(float(th_value), color='crimson', linestyle='--', linewidth=1.5)
 
-    plt.suptitle(f'{dataset_name} ({seg_item} - {th_name}_{min_max})')
+    plt.suptitle(f'{experiment_name}: {dataset_name} ({seg_item} - {th_name}_{min_max})')
     sns.move_legend(fig, loc='lower center', bbox_to_anchor=(0.5, -0.05), ncol=3, title=None, frameon=False)
     fig.set_titles(y=-0.1)
 
     plt.tight_layout()
-    fig.savefig(f"outputs/{int(datetime.timestamp(datetime.now()))}.png")
+    os.makedirs(f'outputs/{experiment_name}', exist_ok=True)
+    fig.savefig(f"outputs/{experiment_name}/{int(datetime.timestamp(datetime.now()))}.png", bbox_inches='tight', dpi=300)
     plt.show()
 
 def boxplots_by_dataset_compare(
@@ -311,10 +325,11 @@ def boxplots_by_dataset_compare(
         dataset_name = 'vggss',
         seg_item = 'm_i_seg',
         th_name = 'max_neg',
-        min_max = 'max'
+        min_max = 'max',
+        experiment_name = ''
     ):
     if len(list_of_experiments) != len(list_of_epochs):
-        return
+        raise Exception('Incorrect params')
     N = len(list_of_epochs)
 
     fig, axs = plt.subplots(nrows=1, ncols=N, sharey=True, figsize=(1.5*N, 4))
@@ -323,6 +338,8 @@ def boxplots_by_dataset_compare(
     palette = sns.color_palette('pastel', n_colors=len(hue_order))
 
     for i in range(N):
+        ax = axs if N == 1 else axs[i]
+
         df = list_of_experiments[i].infer_info.copy()
         df = df[(df["dataset"] == dataset_name) &
                 (df["min_max"] == min_max) &
@@ -337,16 +354,16 @@ def boxplots_by_dataset_compare(
             hue='audio_type',
             hue_order=hue_order,
             palette=palette,
-            ax=axs[i],
+            ax=ax,
             legend=False
         )
 
-        axs[i].set_title(f"{list_of_experiments[i].name}@{list_of_epochs[i]}", fontsize=12)
-        axs[i].set_ylim([0, 1])
+        ax.set_title(f"{list_of_experiments[i].name}@{list_of_epochs[i]}", fontsize=12)
+        ax.set_ylim([0, 1])
 
-        th_value = list_of_experiments[i].thresholds.get(int(list_of_epochs[i]), {}).get(th_name)
+        th_value = list_of_experiments[i].thresholds.get(int(list_of_epochs[i]), {}).get(seg_item, {}).get(th_name)
         if th_value is not None:
-            axs[i].axhline(float(th_value), color='crimson', linestyle='--', linewidth=1.5)
+            ax.axhline(float(th_value), color='crimson', linestyle='--', linewidth=1.5)
 
     legend_elements = [Patch(facecolor=palette[i], label=hue_order[i]) for i in range(len(hue_order))]
     legend_elements.append(Line2D([0], [0], color='crimson', linestyle='--', linewidth=1.5, label=th_name))
@@ -363,4 +380,6 @@ def boxplots_by_dataset_compare(
     fig.suptitle(f'{dataset_name} ({seg_item} - {min_max})', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
+    os.makedirs(f'outputs/{experiment_name}', exist_ok=True)
+    fig.savefig(f"outputs/{int(datetime.timestamp(datetime.now()))}.png", bbox_inches='tight', dpi=300)
     plt.show()

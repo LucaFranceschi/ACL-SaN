@@ -15,7 +15,7 @@ def get_metric(ss: str):
         return match.group(1)
 
 def get_audio_type(ss: str):
-    match = re.search(r'(positive|std|pos|silence|sil|noise|noi)', ss)
+    match = re.search(r'(positive|pos|silence|sil|noise|noi)', ss)
     if match != None:
         return match.group(1)
 
@@ -47,7 +47,7 @@ def get_min_max(ss: str):
     return snr
 
 def get_seg_item(ss: str):
-    match = re.search(r'(v_d_seg|m_i_seg|v_i_seg|v_f_sim)', ss)
+    match = re.search(r'(v_d|m_i|v_i|v_f)', ss)
     if match == None:
         return ''
     snr = match.group(1)
@@ -98,6 +98,7 @@ def load_eval(path, run_name):
     df['dataset'] = df['run_group'].apply(lambda x: get_dataset(str(x)))
     df['epoch'] = df['run_group'].apply(lambda x: get_epoch(str(x)))
     df['snr'] = df['run_group'].apply(lambda x: get_snr(str(x)))
+    df['seg_item'] = df['metric_tag'].apply(lambda x: get_seg_item(str(x)))
     df.drop(['wall_time', 'metric_tag', 'run_group'],axis=1, inplace=True)
     df = df.assign(run=run_name)
 
@@ -119,7 +120,7 @@ def load_infer_info(path, run_name):
 
     df['epoch'] = df['run_group'].apply(lambda x: get_epoch(str(x)))
     df['audio_type'] = df['metric_tag'].apply(lambda x: get_audio_type(str(x)))
-    df['snr'] = df['run_group'].apply(lambda x: get_snr(str(x)))
+    df['snr'] = df['metric_tag'].apply(lambda x: get_snr(str(x)))
     df['dataset'] = df['metric_tag'].apply(lambda x: get_dataset(str(x)))
     df['min_max'] = df['metric_tag'].apply(lambda x: get_min_max(str(x)))
     df['seg_item'] = df['metric_tag'].apply(lambda x: get_seg_item(str(x)))
@@ -138,19 +139,25 @@ def get_thresholds(infer_info_df):
     for epoch in df['epoch'].unique():
         df_epoch = df[df['epoch'] == epoch].copy()
 
-        pos_arr = df_epoch[df_epoch['audio_type'] == 'pos']['data'].iloc[0]
-        sil_arr = df_epoch[df_epoch['audio_type'] == 'sil']['data'].iloc[0]
-        noise_arr = df_epoch[df_epoch['audio_type'] == 'noi']['data'].iloc[0]
-        max_negatives = [sil_arr, noise_arr]
-        max_negatives_separate = [np.percentile(sil_arr, 75), np.percentile(noise_arr, 75)]
+        return_thresholds[int(epoch)] = {}
+        for seg_item in df_epoch['seg_item'].unique():
 
-        return_thresholds[int(epoch)] = {
-            'max_neg': np.mean(max_negatives),
-            'max_neg_plus_10': np.mean(max_negatives) * 1.1,
-            'max_q2_pos': np.percentile(pos_arr, 25),
-            'max_q3_all': np.percentile(max_negatives, 75),
-            'max_q3_separate': np.max(max_negatives_separate)
-        }
+            pos_arr = df_epoch[(df_epoch['audio_type'] == 'pos') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
+            sil_arr = df_epoch[(df_epoch['audio_type'] == 'sil') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
+            noise_arr = df_epoch[(df_epoch['audio_type'] == 'noi') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
+
+            max_negatives = [list(sil_arr), list(noise_arr)]
+            max_negatives_separate = [np.percentile(list(sil_arr), 75), np.percentile(list(noise_arr), 75)]
+
+            thresh_for_seg_item = {
+                'max_neg': np.mean(max_negatives),
+                'max_neg_plus_10': np.mean(max_negatives) * 1.1,
+                'max_q2_pos': np.percentile(list(pos_arr), 25),
+                'max_q3_all': np.percentile(max_negatives, 75),
+                'max_q3_separate': np.max(max_negatives_separate)
+            }
+
+            return_thresholds[int(epoch)][seg_item] = thresh_for_seg_item
 
         del df_epoch, max_negatives, max_negatives_separate
         gc.collect()
