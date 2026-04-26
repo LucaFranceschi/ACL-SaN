@@ -25,7 +25,7 @@ from datasets.silence_and_noise.silence_and_noise import get_silence_noise_audio
 import json
 
 @torch.no_grad()
-def main(model_name, model_path, train_config_name, data_path_dict, model_weights_path, save_path, path_to_thresholds, epochs):
+def main(model_name, model_path, train_config_name, data_path_dict, model_weights_path, save_path):
     if USE_DDP:
         dist.init_process_group("nccl", timeout=datetime.timedelta(seconds=9000))
         global rank
@@ -75,7 +75,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
         num_workers=args.num_workers, pin_memory=False, drop_last=True, shuffle=False)
 
     # Get Test Dataloader (VGGSS)
-    vggss_dataset = VGGSSDataset(data_path_dict['vggss'], 'vggss_test_100', is_train=False,
+    vggss_dataset = VGGSSDataset(data_path_dict['vggss'], 'vggss_test', is_train=False,
                                  input_resolution=args.input_resolution)
     vggss_dataloader = torch.utils.data.DataLoader(vggss_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                    pin_memory=False, drop_last=True)
@@ -97,7 +97,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
                                                       pin_memory=False, drop_last=True)
 
     # Get Test Dataloader (AVS)
-    avss4_dataset = AVSBenchDataset(data_path_dict['avs'], 'avs1_s4_test_subset', is_train=False,
+    avss4_dataset = AVSBenchDataset(data_path_dict['avs'], 'avs1_s4_test', is_train=False,
                                     input_resolution=args.input_resolution)
     avss4_dataloader = torch.utils.data.DataLoader(avss4_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                    pin_memory=False, drop_last=True)
@@ -112,7 +112,6 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
                                                     pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
 
     # distribute
-    epoch_dict = {k: epoch_dict[k] for k in epoch_dict.keys() if k in epochs}
     epoch_dict = {k: epoch_dict[k] for k in sorted(epoch_dict.keys())[rank::NUM_GPUS]}
 
     best_scores = {
@@ -122,14 +121,9 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
     }
 
     thresholds_dict = {}
-    for file in os.listdir(path_to_thresholds):
-        if file.endswith('.json'):
-            with open(os.path.join(path_to_thresholds, file), 'r') as fp:
-                thresholds_dict[file] = json.load(fp)
-
-    thresholds_dict = {k: v for d in thresholds_dict.values() for k, v in d.items()}
-
     for epoch, weights_path in epoch_dict.items():
+        # if epoch not in [16, 18, 19]:
+        #     continue
         print(f'Testing epoch {epoch}: {weights_path}')
 
         ''' Set logging dir '''
@@ -146,40 +140,14 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
         model.load(weights_path)
         model.train(False)
 
-        eval_avatar_agg(model, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
-              tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-        result_dict = eval_vggss_agg(model, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-        eval_avsbench_agg(model, avss4_dataloader, args, viz_dir_template.format('s4'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-        eval_flickr_agg(model, flickr_dataloader, args, viz_dir_template.format('flickr'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-        eval_exflickr_agg(model, exflickr_dataloader, args, viz_dir_template.format('exflickr'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-        eval_avsbench_agg(model, avsms3_dataloader, args, viz_dir_template.format('ms3'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-        eval_vggsound_agg(model, test_dataloader, args, viz_dir_template.format('vggsound_test'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-        eval_exvggss_agg(model, exvggss_dataloader, args, viz_dir_template.format('exvggss'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
-
-        if result_dict['best_AUC'][0] > best_scores['best_AUC']['AUC']:
-            best_scores['best_AUC']['epoch'] = epoch
-            best_scores['best_AUC']['AUC'] = result_dict['best_AUC'][0]
-            best_scores['best_AUC']['thr'] = result_dict['best_AUC'][1]
-
-        if result_dict['best_AUC_silence'][0] > best_scores['best_AUC_N_silence']['AUC']:
-            best_scores['best_AUC_N_silence']['epoch'] = epoch
-            best_scores['best_AUC_N_silence']['AUC'] = result_dict['best_AUC_silence'][0]
-            best_scores['best_AUC_N_silence']['thr'] = result_dict['best_AUC_silence'][1]
-
-        if result_dict['best_AUC_noise'][0] > best_scores['best_AUC_N_noise']['AUC']:
-            best_scores['best_AUC_N_noise']['epoch'] = epoch
-            best_scores['best_AUC_N_noise']['AUC'] = result_dict['best_AUC_noise'][0]
-            best_scores['best_AUC_N_noise']['thr'] = result_dict['best_AUC_noise'][1]
+        thresholds = eval_vggss_get_thresholds(model, vggss_dataloader, args, epoch, tensorboard_path, data_path_dict, USE_CUDA)
+        thresholds_dict[epoch] = thresholds
 
         if USE_DDP:
             dist.barrier()
+
+    with open(os.path.join(save_path, 'Test_record', model_exp_name, "numpy", f'thresholds{rank}.json'), 'w') as fp:
+        json.dump(thresholds_dict, fp)
 
     print(best_scores)
 
@@ -197,12 +165,8 @@ if __name__ == "__main__":
     parser.add_argument('--avatar_path', type=str, default='', help='AVATAR dataset directory')
     parser.add_argument('--san_path', type=str, default='', help='Silence and noise data directory')
     parser.add_argument('--local_rank', type=str, default='', help='Rank for distributed train')
-    parser.add_argument('--path_to_thresholds', type=str, default='', help='')
-    parser.add_argument('--epochs', type=str, default='', help='')
 
     args = parser.parse_args()
-
-    epochs = args.epochs.split(',')
 
     data_path = {'vggss': args.vggss_path,
                  'flickr': args.flickr_path,
@@ -217,4 +181,4 @@ if __name__ == "__main__":
     NUM_GPUS = len(os.environ.get('CUDA_VISIBLE_DEVICES', '').split(','))
     USE_DDP = True if NUM_GPUS > 1 else False
 
-    main(args.model_name, args.model_path, args.train_config, data_path, args.model_weights, args.save_path, args.path_to_thresholds, epochs)
+    main(args.model_name, args.model_path, args.train_config, data_path, args.model_weights, args.save_path)

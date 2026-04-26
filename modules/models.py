@@ -383,6 +383,10 @@ class ACL(nn.Module):
             if pred_emb_noise != None:
                 out_dict['noise'] = self.forward_module_eval(image, pred_emb_noise.repeat(pred_emb.shape[0], 1), resolution)
 
+            pred_emb_offscreen = kwargs.get('pred_emb_offscreen', None)
+            if pred_emb_offscreen != None:
+                out_dict['offscreen'] = self.forward_module_eval(image, pred_emb_offscreen, resolution)
+
         return out_dict
 
     def forward_for_validation(self, image: torch.Tensor, pred_emb: torch.Tensor, resolution: int = 224, **kwargs) -> dict:

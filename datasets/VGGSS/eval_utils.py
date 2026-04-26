@@ -35,6 +35,19 @@ class Evaluator(object):
         }
         self.noise_metrics = copy.deepcopy(self.silence_metrics)
 
+        self.offscreen_metrics = {
+            'cIoU': [],
+            'pIA': [],
+            'metrics': {
+                'AUC': None,
+                'cIoU_ap50': None,
+                'cIoU_hat': None,
+                'AUC_N': None,
+                'pIA_ap50': None,
+                'pIA_hat': None
+            }
+        }
+
     def evaluate_batch(self, heatmap: torch.Tensor, target: torch.Tensor, thr: Optional[float] = None, **kwargs) -> None:
 
         """
@@ -48,7 +61,7 @@ class Evaluator(object):
         Returns:
             None
         """
-        self._evaluate_batch(heatmap, 'std', thr, target)
+        self._evaluate_batch(heatmap, 'pos', thr, target)
 
         sil_heatmap = kwargs.get('silence_heatmap', None)
         if sil_heatmap != None:
@@ -56,7 +69,12 @@ class Evaluator(object):
 
         noise_heatmap = kwargs.get('noise_heatmap', None)
         if noise_heatmap != None:
-            self._evaluate_batch(noise_heatmap, 'noise', thr, target)
+            self._evaluate_batch(noise_heatmap, 'noi', thr, target)
+
+        offscreen_heatmap = kwargs.get('offscreen_heatmap', None)
+        if offscreen_heatmap != None:
+            self._evaluate_batch(offscreen_heatmap, 'off', thr, target)
+
 
     def _evaluate_batch(self, heatmap, metric, thr_param, gt):
         for i in range(heatmap.size(0)):
@@ -72,9 +90,12 @@ class Evaluator(object):
             else:
                 thr = thr_param
 
-            if metric in ('sil', 'noise'):
+            if metric in ('sil', 'noi'):
                 self.cal_pIA(pred, metric, thr)
-            else:
+            elif metric == 'pos':
+                self.cal_CIOU(pred, target, metric, thr)
+            elif metric == 'off':
+                self.cal_pIA(pred, metric, thr)
                 self.cal_CIOU(pred, target, metric, thr)
 
     def cal_CIOU(self, infer: torch.Tensor, gtmap: torch.Tensor, metric, thres: float = 0.01):
@@ -94,8 +115,10 @@ class Evaluator(object):
         ciou = (infer_map * gtmap).sum(2).sum(1) / (gtmap.sum(2).sum(1) + (infer_map * (gtmap == 0)).sum(2).sum(1) + 1e-12)
         ciou = ciou.detach().cpu().float()
 
-        if metric == 'std':
+        if metric == 'pos':
             self.std_metrics['cIoU'].append(ciou)
+        elif metric == 'off':
+            self.offscreen_metrics['cIoU'].append(ciou)
         return
 
     def cal_pIA(self, infer: torch.Tensor, metric: str, thres: float = 0.01):
@@ -114,8 +137,10 @@ class Evaluator(object):
 
         if metric == 'sil':
             self.silence_metrics['pIA'].append(pIA)
-        elif metric == 'noise':
+        elif metric == 'noi':
             self.noise_metrics['pIA'].append(pIA)
+        elif metric == 'off':
+            self.offscreen_metrics['pIA'].append(pIA)
         return
 
     def finalize_AUC(self):
@@ -125,7 +150,7 @@ class Evaluator(object):
         Returns:
             float: AUC value.
         """
-        for metric in [self.std_metrics]:
+        for metric in [self.std_metrics, self.offscreen_metrics]:
             if len(metric['cIoU']) > 0:
                 cious = [np.sum(np.array(metric['cIoU']) >= 0.05 * i) / len(metric['cIoU'])
                         for i in range(21)]
@@ -133,7 +158,7 @@ class Evaluator(object):
                 auc = mt.auc(thr, cious)
                 metric['metrics']['AUC'] = auc
 
-        for metric in [self.silence_metrics, self.noise_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics]:
             if len(metric['pIA']) > 0:
                 aucs = [np.sum(np.array(metric['pIA']) < 0.05 * i) / len(metric['pIA']) for i in range(21)]
                 thr = [0.05 * i for i in range(21)]
@@ -147,12 +172,12 @@ class Evaluator(object):
         Returns:
             float: cIoU@0.5 value.
         """
-        for metric in [self.std_metrics]:
+        for metric in [self.std_metrics, self.offscreen_metrics]:
             if len(metric['cIoU']) > 0:
                 ap50 = np.mean(np.array(metric['cIoU']) >= 0.5)
                 metric['metrics']['cIoU_ap50'] = ap50
 
-        for metric in [self.silence_metrics, self.noise_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics]:
             if len(metric['pIA']) > 0:
                 ap50 = np.mean(np.array(metric['pIA']) < 0.5)
                 metric['metrics']['pIA_ap50'] = ap50
@@ -164,12 +189,12 @@ class Evaluator(object):
         Returns:
             float: Mean cIoU value.
         """
-        for metric in [self.std_metrics]:
+        for metric in [self.std_metrics, self.offscreen_metrics]:
             if len(metric['cIoU']) > 0:
                 ciou = np.mean(np.array(metric['cIoU']))
                 metric['metrics']['cIoU_hat'] = ciou
 
-        for metric in [self.silence_metrics, self.noise_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics]:
             if len(metric['pIA']) > 0:
                 pia = np.mean(np.array(metric['pIA']))
                 metric['metrics']['pIA_hat'] = pia
@@ -184,4 +209,4 @@ class Evaluator(object):
         self.finalize_AUC()
         self.finalize_AP50()
         self.finalize_means()
-        return self.std_metrics['metrics'], self.silence_metrics['metrics'], self.noise_metrics['metrics']
+        return self.std_metrics['metrics'], self.silence_metrics['metrics'], self.noise_metrics['metrics'], self.offscreen_metrics['metrics']

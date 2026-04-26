@@ -258,8 +258,8 @@ def eval_vggsound_agg(
     san_dict = {'san': True, 'san_real': args.san_real, **neg_audios}
 
     # Thresholds for evaluation
-    thrs_m_i = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['m_i'].values()) + [None]
-    thrs_v_d = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['v_d'].values()) + [None]
+    thrs_m_i = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['m_i'].values()) + [None]
+    thrs_v_d = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['v_d'].values()) + [None]
     evaluators_m_i = [vggsound_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d = [vggsound_eval.Evaluator() for i in range(len(thrs_v_d))]
 
@@ -330,39 +330,39 @@ def eval_vggsound_agg(
             evaluators_v_d[i].evaluate_batch(**heatmaps_v_d, thr=thr)
 
         # Visual results
-        for j in range(test_dataloader.batch_size):
-            seg = heatmaps['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = heatmaps['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
 
-        for j in range(test_dataloader.batch_size):
-            seg = heatmaps_v_d['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = heatmaps_v_d['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
 
-        # Overall figure
-        for j in range(test_dataloader.batch_size):
-            original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
+        # # Overall figure
+        # for j in range(test_dataloader.batch_size):
+        #     original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
 
-            seg = heatmaps['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
-            heatmap_image = Image.fromarray(seg_image)
+        #     seg = heatmaps['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        #     heatmap_image = Image.fromarray(seg_image)
 
-            if 'silence_heatmap' in heatmaps and 'noise_heatmap' in heatmaps:
-                seg = heatmaps['silence_heatmap'][j:j+1]
-                seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
-                heatmap_image_silence = Image.fromarray(seg_image)
+        #     if 'silence_heatmap' in heatmaps and 'noise_heatmap' in heatmaps:
+        #         seg = heatmaps['silence_heatmap'][j:j+1]
+        #         seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        #         heatmap_image_silence = Image.fromarray(seg_image)
 
-                seg = heatmaps['noise_heatmap'][j:j+1]
-                seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
-                heatmap_image_noise = Image.fromarray(seg_image)
+        #         seg = heatmaps['noise_heatmap'][j:j+1]
+        #         seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        #         heatmap_image_noise = Image.fromarray(seg_image)
 
-                draw_overall(result_dir, original_image, heatmap_image, heatmap_image_silence, heatmap_image_noise, labels[j], name[j])
-            draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+        #         draw_overall(result_dir, original_image, heatmap_image, heatmap_image_silence, heatmap_image_noise, labels[j], name[j])
+        #     draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
@@ -467,31 +467,37 @@ def eval_vggss_get_thresholds(
     outputs_max = {
         'positive': deepcopy(outputs_template),
         'silence': deepcopy(outputs_template),
-        'noise': deepcopy(outputs_template)
+        'noise': deepcopy(outputs_template),
+        'offscreen': deepcopy(outputs_template)
     }
     outputs_min = {
         'positive': deepcopy(outputs_template),
         'silence': deepcopy(outputs_template),
-        'noise': deepcopy(outputs_template)
+        'noise': deepcopy(outputs_template),
+        'offscreen': deepcopy(outputs_template)
     }
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"[{epoch}] Evaluating thresholds in VGG-SS dataset ({test_split})...")):
         images, audios, bboxes = data['images'], data['audios'], data['bboxes']
         labels, name = data['labels'], data['ids']
+        offscreen_audios = data['offscreen_audios']
 
         audio_embeddings = {}
 
         # Inference
         placeholder_tokens = model.get_placeholder_token(prompt_template.replace('{}', ''))
         placeholder_tokens = placeholder_tokens.repeat((test_dataloader.batch_size, 1))
-        audio_driven_embedding = model.encode_audio(audios.to(model.device), placeholder_tokens, text_pos_at_prompt,
-                                                    prompt_length)
+        audio_driven_embedding = model.encode_audio(audios.to(model.device), placeholder_tokens, text_pos_at_prompt, prompt_length)
 
         audio_embeddings['pred_emb'] = audio_driven_embedding
 
         audio_embeddings['pred_emb_silence'] = san_dict['pred_emb_san'][0].unsqueeze(0)
 
         audio_embeddings['pred_emb_noise'] = san_dict['pred_emb_san'][1].unsqueeze(0)
+
+        audio_driven_embedding_off = model.encode_audio(offscreen_audios.to(model.device), placeholder_tokens, text_pos_at_prompt, prompt_length)
+
+        audio_embeddings['pred_emb_offscreen'] = audio_driven_embedding_off
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
@@ -520,10 +526,10 @@ def eval_vggss_get_thresholds(
                     np.array(outputs_min[audio_type][arr_name], dtype=np.float16)
                 )
 
-    max_negatives_m_i = [outputs_max['silence']['m_i_seg'], outputs_max['noise']['m_i_seg']]
-    max_negatives_separate_m_i = [np.percentile(outputs_max['silence']['m_i_seg'], 75), np.percentile(outputs_max['noise']['m_i_seg'], 75)]
-    max_negatives_v_d = [outputs_max['silence']['v_d_seg'], outputs_max['noise']['v_d_seg']]
-    max_negatives_separate_v_d = [np.percentile(outputs_max['silence']['v_d_seg'], 75), np.percentile(outputs_max['noise']['v_d_seg'], 75)]
+    max_negatives_m_i = [outputs_max['silence']['m_i_seg'], outputs_max['noise']['m_i_seg'], outputs_max['offscreen']['m_i_seg']]
+    max_negatives_separate_m_i = [np.percentile(outputs_max['silence']['m_i_seg'], 75), np.percentile(outputs_max['noise']['m_i_seg'], 75), np.percentile(outputs_max['offscreen']['m_i_seg'], 75)]
+    max_negatives_v_d = [outputs_max['silence']['v_d_seg'], outputs_max['noise']['v_d_seg'], outputs_max['offscreen']['v_d_seg']]
+    max_negatives_separate_v_d = [np.percentile(outputs_max['silence']['v_d_seg'], 75), np.percentile(outputs_max['noise']['v_d_seg'], 75), np.percentile(outputs_max['offscreen']['v_d_seg'], 75)]
 
     return_thresholds = {
         'm_i': {
@@ -609,18 +615,21 @@ def eval_vggss_agg(
     if snr == None:
         outputs_max['silence'] = deepcopy(outputs_template)
         outputs_max['noise'] = deepcopy(outputs_template)
+        outputs_max['offscreen'] = deepcopy(outputs_template)
         outputs_min['silence'] = deepcopy(outputs_template)
         outputs_min['noise'] = deepcopy(outputs_template)
+        outputs_min['offscreen'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs_m_i = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
-    thrs_v_d = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
+    thrs_m_i = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
+    thrs_v_d = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
     evaluators_m_i = [vggss_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d = [vggss_eval.Evaluator() for i in range(len(thrs_v_d))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGG-SS dataset ({test_split})...")):
         images, audios, bboxes = data['images'], data['audios'], data['bboxes']
         labels, name = data['labels'], data['ids']
+        offscreen_audios = data.get('offscreen_audios', None)
 
         audio_embeddings = {}
 
@@ -635,6 +644,11 @@ def eval_vggss_agg(
             audio_embeddings['pred_emb_silence'] = san_dict['pred_emb_san'][0].unsqueeze(0)
 
             audio_embeddings['pred_emb_noise'] = san_dict['pred_emb_san'][1].unsqueeze(0)
+
+            if offscreen_audios != None:
+                audio_driven_embedding_off = model.encode_audio(offscreen_audios.to(model.device), placeholder_tokens, text_pos_at_prompt, prompt_length)
+
+                audio_embeddings['pred_emb_offscreen'] = audio_driven_embedding_off
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
@@ -660,6 +674,10 @@ def eval_vggss_agg(
             heatmaps_v_d['silence_heatmap'] = out_dict['silence']['v_d_seg']
             heatmaps_v_d['noise_heatmap'] = out_dict['noise']['v_d_seg']
 
+            if offscreen_audios != None:
+                heatmaps['offscreen_heatmap'] = out_dict['offscreen']['m_i_seg']
+                heatmaps_v_d['offscreen_heatmap'] = out_dict['offscreen']['v_d_seg']
+
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs_m_i):
             evaluators_m_i[i].evaluate_batch(**heatmaps, target=bboxes, thr=thr)
@@ -668,30 +686,30 @@ def eval_vggss_agg(
             evaluators_v_d[i].evaluate_batch(**heatmaps_v_d, target=bboxes, thr=thr)
 
         # Visual results
-        for j in range(test_dataloader.batch_size):
-            seg = heatmaps['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = heatmaps['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
 
-        for j in range(test_dataloader.batch_size):
-            seg = heatmaps_v_d['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = heatmaps_v_d['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
 
         # Overall figure
-        for j in range(test_dataloader.batch_size):
-            original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
-            gt_image = vt.ToPILImage()(bboxes[j]).resize(gt_resolution).point(lambda p: 255 - p)
-            heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
-            seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
-                lambda p: 0 if p / 255 < 0.5 else 255)
+        # for j in range(test_dataloader.batch_size):
+        #     original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
+        #     gt_image = vt.ToPILImage()(bboxes[j]).resize(gt_resolution).point(lambda p: 255 - p)
+        #     heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
+        #     seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
+        #         lambda p: 0 if p / 255 < 0.5 else 255)
 
-            draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
-            draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+        #     draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
+        #     draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
@@ -722,7 +740,7 @@ def eval_vggss_agg(
     best_AUC_noise = [0.0, 0.0]
 
     for i, thr in enumerate(thrs_m_i):
-        std_metrics, silence_metrics, noise_metrics = evaluators_m_i[i].finalize()
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_m_i[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split} with thr = {thr})\n'
         msg += f'{std_metrics["cIoU_ap50"]=}, {std_metrics["AUC"]=}, {std_metrics["cIoU_hat"]=}\n'
@@ -745,8 +763,14 @@ def eval_vggss_agg(
                 writer.add_scalars(f'test/m_i_seg/noi/{test_split}({thr})', noise_metrics, epoch)
                 best_AUC_noise = [noise_metrics['AUC_N'], thr] if best_AUC_noise[0] < noise_metrics['AUC_N'] else best_AUC_noise
 
+            msg += f'{model.__class__.__name__} ({test_split} with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics["pIA_ap50"]=}, {offscreen_metrics["AUC_N"]=}, {offscreen_metrics["pIA_hat"]=}\n'
+            msg += f'{offscreen_metrics["cIoU_ap50"]=}, {offscreen_metrics["AUC"]=}, {offscreen_metrics["cIoU_hat"]=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/m_i_seg/off/{test_split}({thr})', offscreen_metrics, epoch)
+
     for i, thr in enumerate(thrs_v_d):
-        std_metrics, silence_metrics, noise_metrics = evaluators_v_d[i].finalize()
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_v_d[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split} with thr = {thr})\n'
         msg += f'{std_metrics["cIoU_ap50"]=}, {std_metrics["AUC"]=}, {std_metrics["cIoU_hat"]=}\n'
@@ -764,6 +788,12 @@ def eval_vggss_agg(
             msg += f'{noise_metrics["pIA_ap50"]=}, {noise_metrics["AUC_N"]=}, {noise_metrics["pIA_hat"]=}\n'
             if tensorboard_path is not None and epoch is not None:
                 writer.add_scalars(f'test/v_d_seg/noi/{test_split}({thr})', noise_metrics, epoch)
+
+            msg += f'{model.__class__.__name__} ({test_split} with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics["pIA_ap50"]=}, {offscreen_metrics["AUC_N"]=}, {offscreen_metrics["pIA_hat"]=}\n'
+            msg += f'{offscreen_metrics["cIoU_ap50"]=}, {offscreen_metrics["AUC"]=}, {offscreen_metrics["cIoU_hat"]=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/v_d_seg/off/{test_split}({thr})', offscreen_metrics, epoch)
 
     print(msg)
     with open(rst_path, 'w') as fp_rst:
@@ -842,15 +872,19 @@ def eval_avsbench_agg(
         outputs_max['noise'] = deepcopy(outputs_template)
         outputs_min['silence'] = deepcopy(outputs_template)
         outputs_min['noise'] = deepcopy(outputs_template)
+        if test_dataloader.dataset.setting == 's4':
+            outputs_max['offscreen'] = deepcopy(outputs_template)
+            outputs_min['offscreen'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs_m_i = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
-    thrs_v_d = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
+    thrs_m_i = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
+    thrs_v_d = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
     evaluators_m_i = [avsbench_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d = [avsbench_eval.Evaluator() for i in range(len(thrs_v_d))]
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate AVSBench dataset ({test_split})...")):
         images, audios, gts, labels, name = data['images'], data['audios'], data['gts'], data['labels'], data['ids']
+        offscreen_audios = data.get('offscreen_audios', None)
 
         audio_embeddings = {}
 
@@ -865,6 +899,11 @@ def eval_avsbench_agg(
             audio_embeddings['pred_emb_silence'] = san_dict['pred_emb_san'][0].unsqueeze(0)
 
             audio_embeddings['pred_emb_noise'] = san_dict['pred_emb_san'][1].unsqueeze(0)
+
+            if offscreen_audios != None:
+                audio_driven_embedding_off = model.encode_audio(offscreen_audios.to(model.device), placeholder_tokens, text_pos_at_prompt, prompt_length)
+
+                audio_embeddings['pred_emb_offscreen'] = audio_driven_embedding_off
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
@@ -891,6 +930,10 @@ def eval_avsbench_agg(
             heatmaps_v_d['silence_heatmap'] = out_dict['silence']['v_d_seg']
             heatmaps_v_d['noise_heatmap'] = out_dict['noise']['v_d_seg']
 
+            if offscreen_audios != None:
+                heatmaps['offscreen_heatmap'] = out_dict['offscreen']['m_i_seg']
+                heatmaps_v_d['offscreen_heatmap'] = out_dict['offscreen']['v_d_seg']
+
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs_m_i):
             evaluators_m_i[i].evaluate_batch(**heatmaps, target=gts.to(model.device), thr=thr)
@@ -899,31 +942,31 @@ def eval_avsbench_agg(
             evaluators_v_d[i].evaluate_batch(**heatmaps_v_d, target=gts.to(model.device), thr=thr)
 
         # Visual results
-        for j in range(test_dataloader.batch_size):
-            seg = heatmaps['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = heatmaps['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
 
-        for j in range(test_dataloader.batch_size):
-            seg = heatmaps_v_d['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = heatmaps_v_d['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
 
-        # Overall figure
-        for j in range(test_dataloader.batch_size):
-            original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.png')).resize(gt_resolution)
-            gt_image = Image.open(os.path.join(test_dataloader.dataset.gt_path, name[j] + '.png')).resize(gt_resolution).point(
-                lambda p: 255 - p)
-            heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
-            seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
-                lambda p: 0 if p / 255 < 0.5 else 255)
+        # # Overall figure
+        # for j in range(test_dataloader.batch_size):
+        #     original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.png')).resize(gt_resolution)
+        #     gt_image = Image.open(os.path.join(test_dataloader.dataset.gt_path, name[j] + '.png')).resize(gt_resolution).point(
+        #         lambda p: 255 - p)
+        #     heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
+        #     seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
+        #         lambda p: 0 if p / 255 < 0.5 else 255)
 
-            draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
-            draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+        #     draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
+        #     draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
@@ -950,7 +993,7 @@ def eval_avsbench_agg(
 
     # Final result
     for i, thr in enumerate(thrs_m_i):
-        std_metrics, silence_metrics, noise_metrics = evaluators_m_i[i].finalize()
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_m_i[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split} with thr = {thr})\n'
         msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
@@ -969,6 +1012,13 @@ def eval_avsbench_agg(
             msg += f'{noise_metrics["pIA_ap50"]=}, {noise_metrics["AUC_N"]=}, {noise_metrics["pIA_hat"]=}\n'
             if tensorboard_path is not None and epoch is not None:
                 writer.add_scalars(f'test/m_i_seg/noi/avs/{test_split}({thr})', noise_metrics, epoch)
+
+            msg += f'{model.__class__.__name__} ({test_split} with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics.get("pIA_ap50", None)=}, {offscreen_metrics.get("AUC_N", None)=}, {offscreen_metrics.get("pIA_hat", None)=}\n'
+            msg += f'{offscreen_metrics.get("mIoU", None)=}, {offscreen_metrics.get("Fmeasure", None)=}\n'
+            msg += f'{offscreen_metrics.get("cIoU_ap50", None)=}, {offscreen_metrics.get("AUC", None)=}, {offscreen_metrics.get("cIoU_hat", None)=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/m_i_seg/off/avs/{test_split}({thr})', offscreen_metrics, epoch)
 
     for i, thr in enumerate(thrs_v_d):
         std_metrics, silence_metrics, noise_metrics = evaluators_v_d[i].finalize()
@@ -990,6 +1040,13 @@ def eval_avsbench_agg(
             msg += f'{noise_metrics["pIA_ap50"]=}, {noise_metrics["AUC_N"]=}, {noise_metrics["pIA_hat"]=}\n'
             if tensorboard_path is not None and epoch is not None:
                 writer.add_scalars(f'test/v_d_seg/noi/avs/{test_split}({thr})', noise_metrics, epoch)
+
+            msg += f'{model.__class__.__name__} ({test_split} with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics.get("pIA_ap50", None)=}, {offscreen_metrics.get("AUC_N", None)=}, {offscreen_metrics.get("pIA_hat", None)=}\n'
+            msg += f'{offscreen_metrics.get("mIoU", None)=}, {offscreen_metrics.get("Fmeasure", None)=}\n'
+            msg += f'{offscreen_metrics.get("cIoU_ap50", None)=}, {offscreen_metrics.get("AUC", None)=}, {offscreen_metrics.get("cIoU_hat", None)=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/v_d_seg/off/avs/{test_split}({thr})', offscreen_metrics, epoch)
 
     print(msg)
     with open(rst_path, 'w') as fp_rst:
@@ -1066,8 +1123,8 @@ def eval_flickr_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs_m_i = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
-    thrs_v_d = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
+    thrs_m_i = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
+    thrs_v_d = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
     evaluators_m_i = [flickr_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d = [flickr_eval.Evaluator() for i in range(len(thrs_v_d))]
 
@@ -1122,30 +1179,30 @@ def eval_flickr_agg(
             evaluators_v_d[i].evaluate_batch(**heatmaps_v_d, target=bboxes, thr=thr)
 
         # Visual results
-        for j in range(test_dataloader.batch_size):
-            seg = (heatmaps['heatmap'][j:j+1])
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = (heatmaps['heatmap'][j:j+1])
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
 
-        for j in range(test_dataloader.batch_size):
-            seg = heatmaps_v_d['heatmap'][j:j+1]
-            seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        # for j in range(test_dataloader.batch_size):
+        #     seg = heatmaps_v_d['heatmap'][j:j+1]
+        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-            os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
-            cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
+        #     os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
+        #     cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
 
-        # Overall figure
-        for j in range(test_dataloader.batch_size):
-            original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
-            gt_image = vt.ToPILImage()(bboxes[j]).resize(gt_resolution).point(lambda p: 255 - p)
-            heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
-            seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
-                lambda p: 0 if p / 255 < 0.5 else 255)
+        # # Overall figure
+        # for j in range(test_dataloader.batch_size):
+        #     original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
+        #     gt_image = vt.ToPILImage()(bboxes[j]).resize(gt_resolution).point(lambda p: 255 - p)
+        #     heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
+        #     seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
+        #         lambda p: 0 if p / 255 < 0.5 else 255)
 
-            draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
-            draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+        #     draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
+        #     draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
@@ -1286,8 +1343,8 @@ def eval_exvggss_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs_m_i = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
-    thrs_v_d = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
+    thrs_m_i = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
+    thrs_v_d = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
     evaluators_m_i = [exvggss_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d = [exvggss_eval.Evaluator() for i in range(len(thrs_v_d))]
 
@@ -1485,8 +1542,8 @@ def eval_exflickr_agg(
         outputs_min['noise'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs_m_i = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
-    thrs_v_d = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
+    thrs_m_i = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
+    thrs_v_d = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
     evaluators_m_i = [exflickr_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d = [exflickr_eval.Evaluator() for i in range(len(thrs_v_d))]
 
@@ -1627,6 +1684,7 @@ def avatar_collate_fn(batch):
     # We extract the list of images/audios from the batch and stack them
     batched_data['images'] = torch.stack([item['images'] for item in batch])
     batched_data['audios'] = torch.stack([item['audios'] for item in batch])
+    batched_data['offscreen_audios'] = torch.stack([item['offscreen_audios'] for item in batch])
 
     # 2. Keep metadata as lists (Ground Truths and IDs)
     # We do NOT stack these; we just return a list of dictionaries/strings
@@ -1729,10 +1787,12 @@ def eval_avatar_agg(
         outputs_max['noise'] = deepcopy(outputs_template)
         outputs_min['silence'] = deepcopy(outputs_template)
         outputs_min['noise'] = deepcopy(outputs_template)
+        outputs_max['offscreen'] = deepcopy(outputs_template)
+        outputs_min['offscreen'] = deepcopy(outputs_template)
 
     # Thresholds for evaluation
-    thrs_m_i = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
-    thrs_v_d = np.arange(0.05, 1, 0.05).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
+    thrs_m_i = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['m_i'].values()) + ['adap', None]
+    thrs_v_d = np.arange(0.1, 1, 0.1).round(2).tolist() + list(add_thresholds['v_d'].values()) + ['adap', None]
     evaluators_m_i_seg = [avatar_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_m_i_bb = [avatar_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d_seg = [avatar_eval.Evaluator() for i in range(len(thrs_v_d))]
@@ -1740,6 +1800,7 @@ def eval_avatar_agg(
 
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate AVATAR dataset ({test_split})...")):
         images, audios, gts, name = data['images'], data['audios'], data['gts'], data['ids']
+        offscreen_audios = data.get('offscreen_audios', None)
 
         audio_embeddings = {}
 
@@ -1754,6 +1815,11 @@ def eval_avatar_agg(
             audio_embeddings['pred_emb_silence'] = san_dict['pred_emb_san'][0].unsqueeze(0)
 
             audio_embeddings['pred_emb_noise'] = san_dict['pred_emb_san'][1].unsqueeze(0)
+
+            if offscreen_audios != None:
+                audio_driven_embedding_off = model.encode_audio(offscreen_audios.to(model.device), placeholder_tokens, text_pos_at_prompt, prompt_length)
+
+                audio_embeddings['pred_emb_offscreen'] = audio_driven_embedding_off
 
         # Localization result
         out_dict = model(images.to(model.device), resolution=args.ground_truth_resolution, **audio_embeddings)
@@ -1779,6 +1845,10 @@ def eval_avatar_agg(
             heatmaps['noise_heatmap'] = out_dict['noise']['m_i_seg']
             heatmaps_v_d['silence_heatmap'] = out_dict['silence']['v_d_seg']
             heatmaps_v_d['noise_heatmap'] = out_dict['noise']['v_d_seg']
+
+            if offscreen_audios != None:
+                heatmaps['offscreen_heatmap'] = out_dict['offscreen']['m_i_seg']
+                heatmaps_v_d['offscreen_heatmap'] = out_dict['offscreen']['v_d_seg']
 
         # Evaluation for all thresholds
         target = torch.zeros_like(heatmaps['heatmap'])
@@ -1826,31 +1896,31 @@ def eval_avatar_agg(
             evaluators_v_d_bb[i].evaluate_batch(**heatmaps_v_d, target=target_bb.to(model.device), thr=thr)
 
         # Visual results
-        for j in range(test_dataloader.batch_size):
-            heatmap = heatmaps['heatmap'][j:j+1]
-            heatmap_np = ((heatmap.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
-            heatmap_image = Image.fromarray(heatmap_np)
+        # for j in range(test_dataloader.batch_size):
+        #     heatmap = heatmaps['heatmap'][j:j+1]
+        #     heatmap_np = ((heatmap.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        #     heatmap_image = Image.fromarray(heatmap_np)
 
-            os.makedirs(f'{result_dir}/heatmap/{name[j].split("/")[0]}', exist_ok=True)
-            os.makedirs(f'{result_dir}/overall/{name[j].split("/")[0]}', exist_ok=True)
-            os.makedirs(f'{result_dir}/overlaid/{name[j].split("/")[0]}', exist_ok=True)
-            heatmap_image.save(f'{result_dir}/heatmap/{name[j]}.jpg')
+        #     os.makedirs(f'{result_dir}/heatmap/{name[j].split("/")[0]}', exist_ok=True)
+        #     os.makedirs(f'{result_dir}/overall/{name[j].split("/")[0]}', exist_ok=True)
+        #     os.makedirs(f'{result_dir}/overlaid/{name[j].split("/")[0]}', exist_ok=True)
+        #     heatmap_image.save(f'{result_dir}/heatmap/{name[j]}.jpg')
 
-            original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
-            gt_image = Image.fromarray(((target_bb[j].squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)).resize(gt_resolution)
-            seg_image = heatmap_image.resize(gt_resolution).point(lambda p: 0 if p / 255 < 0.5 else 255)
+        #     original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
+        #     gt_image = Image.fromarray(((target_bb[j].squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)).resize(gt_resolution)
+        #     seg_image = heatmap_image.resize(gt_resolution).point(lambda p: 0 if p / 255 < 0.5 else 255)
 
-            draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
-            draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+        #     draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
+        #     draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
-        # Visual results
-        for j in range(test_dataloader.batch_size):
-            heatmap = heatmaps_v_d['heatmap'][j:j+1]
-            heatmap_np = ((heatmap.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
-            heatmap_image = Image.fromarray(heatmap_np)
+        # # Visual results
+        # for j in range(test_dataloader.batch_size):
+        #     heatmap = heatmaps_v_d['heatmap'][j:j+1]
+        #     heatmap_np = ((heatmap.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        #     heatmap_image = Image.fromarray(heatmap_np)
 
-            os.makedirs(f'{result_dir}/heatmap_v_d/{name[j].split("/")[0]}', exist_ok=True)
-            heatmap_image.save(f'{result_dir}/heatmap_v_d/{name[j]}.jpg')
+        #     os.makedirs(f'{result_dir}/heatmap_v_d/{name[j].split("/")[0]}', exist_ok=True)
+        #     heatmap_image.save(f'{result_dir}/heatmap_v_d/{name[j]}.jpg')
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
@@ -1877,7 +1947,7 @@ def eval_avatar_agg(
 
     # Final result
     for i, thr in enumerate(thrs_m_i):
-        std_metrics, silence_metrics, noise_metrics = evaluators_m_i_seg[i].finalize()
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_m_i_seg[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr})\n'
         msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
@@ -1897,7 +1967,14 @@ def eval_avatar_agg(
             if tensorboard_path is not None and epoch is not None:
                 writer.add_scalars(f'test/m_i_seg/noi/avatar/{test_split}_seg({thr})', noise_metrics, epoch)
 
-        std_metrics, silence_metrics, noise_metrics = evaluators_m_i_bb[i].finalize()
+            msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics.get("pIA_ap50", None)=}, {offscreen_metrics.get("AUC_N", None)=}, {offscreen_metrics.get("pIA_hat", None)=}\n'
+            msg += f'{offscreen_metrics.get("mIoU", None)=}, {offscreen_metrics.get("Fmeasure", None)=}\n'
+            msg += f'{offscreen_metrics.get("cIoU_ap50", None)=}, {offscreen_metrics.get("AUC", None)=}, {offscreen_metrics.get("cIoU_hat", None)=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/m_i_seg/off/avatar/{test_split}_seg({thr})', offscreen_metrics, epoch)
+
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_m_i_bb[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_bb with thr = {thr})\n'
         msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
@@ -1917,8 +1994,15 @@ def eval_avatar_agg(
             if tensorboard_path is not None and epoch is not None:
                 writer.add_scalars(f'test/m_i_seg/noi/avatar/{test_split}_bb({thr})', noise_metrics, epoch)
 
+            msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics.get("pIA_ap50", None)=}, {offscreen_metrics.get("AUC_N", None)=}, {offscreen_metrics.get("pIA_hat", None)=}\n'
+            msg += f'{offscreen_metrics.get("mIoU", None)=}, {offscreen_metrics.get("Fmeasure", None)=}\n'
+            msg += f'{offscreen_metrics.get("cIoU_ap50", None)=}, {offscreen_metrics.get("AUC", None)=}, {offscreen_metrics.get("cIoU_hat", None)=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/m_i_seg/off/avatar/{test_split}_bb({thr})', offscreen_metrics, epoch)
+
     for i, thr in enumerate(thrs_v_d):
-        std_metrics, silence_metrics, noise_metrics = evaluators_v_d_seg[i].finalize()
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_v_d_seg[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr})\n'
         msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
@@ -1938,7 +2022,15 @@ def eval_avatar_agg(
             if tensorboard_path is not None and epoch is not None:
                 writer.add_scalars(f'test/v_d_seg/noi/avatar/{test_split}_seg({thr})', noise_metrics, epoch)
 
-        std_metrics, silence_metrics, noise_metrics = evaluators_v_d_bb[i].finalize()
+            msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics.get("pIA_ap50", None)=}, {offscreen_metrics.get("AUC_N", None)=}, {offscreen_metrics.get("pIA_hat", None)=}\n'
+            msg += f'{offscreen_metrics.get("mIoU", None)=}, {offscreen_metrics.get("Fmeasure", None)=}\n'
+            msg += f'{offscreen_metrics.get("cIoU_ap50", None)=}, {offscreen_metrics.get("AUC", None)=}, {offscreen_metrics.get("cIoU_hat", None)=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/v_d_seg/off/avatar/{test_split}_seg({thr})', offscreen_metrics, epoch)
+
+
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_v_d_bb[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_bb with thr = {thr})\n'
         msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
@@ -1957,6 +2049,13 @@ def eval_avatar_agg(
             msg += f'{noise_metrics["pIA_ap50"]=}, {noise_metrics["AUC_N"]=}, {noise_metrics["pIA_hat"]=}\n'
             if tensorboard_path is not None and epoch is not None:
                 writer.add_scalars(f'test/v_d_seg/noi/avatar/{test_split}_bb({thr})', noise_metrics, epoch)
+
+            msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr} evaluated with Offscreen)\n'
+            msg += f'{offscreen_metrics.get("pIA_ap50", None)=}, {offscreen_metrics.get("AUC_N", None)=}, {offscreen_metrics.get("pIA_hat", None)=}\n'
+            msg += f'{offscreen_metrics.get("mIoU", None)=}, {offscreen_metrics.get("Fmeasure", None)=}\n'
+            msg += f'{offscreen_metrics.get("cIoU_ap50", None)=}, {offscreen_metrics.get("AUC", None)=}, {offscreen_metrics.get("cIoU_hat", None)=}\n'
+            if tensorboard_path is not None and epoch is not None:
+                writer.add_scalars(f'test/v_d_seg/off/avatar/{test_split}_bb({thr})', offscreen_metrics, epoch)
 
     print(msg)
     with open(rst_path, 'w') as fp_rst:

@@ -5,9 +5,12 @@ from torchvision import transforms as vt
 from PIL import Image
 import os
 import csv
+import json
 from typing import Dict, Optional, Union, List
 
-from utils.util import AddRandomNoise
+from utils.util import AddRandomNoise, get_key
+
+import random
 
 class AVSBenchDataset(Dataset):
     def __init__(self, data_path: str, split: str, is_train: bool = True, set_length: int = 10,
@@ -51,6 +54,10 @@ class AVSBenchDataset(Dataset):
         subset = set([item[0] for item in csv.reader(open(self.csv_dir))])
         self.file_list = sorted(list(image_files.intersection(subset)))
 
+        if self.setting == 's4':
+            with open(os.path.join(data_path, self.setting, 's4_broad_classes.json')) as fp:
+                self.broad_classes_dict = json.load(fp)
+
         ''' Transform '''
         if is_train:
             self.image_transform = vt.Compose([
@@ -77,7 +84,7 @@ class AVSBenchDataset(Dataset):
         """
         return len(self.file_list)
 
-    def get_audio(self, item: int) -> torch.Tensor:
+    def get_audio(self, item: int, file_id = None) -> torch.Tensor:
         """
         Get audio data for a given item.
 
@@ -87,7 +94,10 @@ class AVSBenchDataset(Dataset):
         Returns:
             torch.Tensor: Audio data.
         """
-        audio_file, sr = torchaudio.load(os.path.join(self.audio_path, self.file_list[item][:-2] + '.wav'))
+        if item != None or file_id == None:
+            audio_file, sr = torchaudio.load(os.path.join(self.audio_path, self.file_list[item][:-2] + '.wav'))
+        else:
+            audio_file, sr = torchaudio.load(os.path.join(self.audio_path, file_id + '.wav'))
 
         if sr != self.SAMPLE_RATE:
             resampler = torchaudio.transforms.Resample(sr, self.SAMPLE_RATE)
@@ -161,6 +171,21 @@ class AVSBenchDataset(Dataset):
         audio = audio_file if self.eval_noise_tr == None else self.eval_noise_tr(audio_file)
         image = self.image_transform(image_file)
 
-        out = {'images': image, 'audios': audio, 'gts': gts, 'labels': label, 'ids': file_id}
+        offscreen_audios = None
+        if self.setting == 's4':
+            all_classes = set(self.broad_classes_dict.keys())
+            same_class = get_key(self.broad_classes_dict, file_id)
+
+            if same_class == None:
+                print(file_id+".wav")
+
+            all_classes -= same_class
+
+            random_class = random.choice(sorted(all_classes))
+            random_file = random.choice(self.broad_classes_dict[random_class])
+
+            offscreen_audios = self.get_audio(None, random_file) if self.set_length != 0 else None
+
+        out = {'images': image, 'audios': audio, 'gts': gts, 'labels': label, 'ids': file_id, 'offscreen_audios': offscreen_audios}
         out = {key: value for key, value in out.items() if value is not None}
         return out

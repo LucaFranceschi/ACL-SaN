@@ -10,7 +10,9 @@ import csv
 import json
 from typing import Dict, List, Optional, Union
 
-from utils.util import AddRandomNoise
+from utils.util import AddRandomNoise, get_key
+
+import random
 
 def load_all_bboxes(annotation_dir: str) -> Dict[str, List[np.ndarray]]:
     """
@@ -96,6 +98,9 @@ class VGGSSDataset(Dataset):
         self.file_list = list(audio_files.intersection(image_files).intersection(subset))
         self.file_list = sorted(self.file_list)
 
+        with open(os.path.join(data_path, 'metadata', 'vggss_broad_classes.json')) as fp:
+            self.broad_classes_dict = json.load(fp)
+
         ''' Transform '''
         if is_train:
             self.image_transform = vt.Compose([
@@ -137,7 +142,7 @@ class VGGSSDataset(Dataset):
         """
         return len(self.file_list)
 
-    def get_audio(self, item: int) -> torch.Tensor:
+    def get_audio(self, item: int, file_id = None) -> torch.Tensor:
         """
         Get audio data for a given item.
 
@@ -147,7 +152,11 @@ class VGGSSDataset(Dataset):
         Returns:
             torch.Tensor: Audio data.
         """
-        audio_file, sr = torchaudio.load(os.path.join(self.audio_path, self.file_list[item] + '.wav'))
+
+        if item != None or file_id == None:
+            audio_file, sr = torchaudio.load(os.path.join(self.audio_path, self.file_list[item] + '.wav'))
+        else:
+            audio_file, sr = torchaudio.load(os.path.join(self.audio_path, file_id + '.wav'))
 
         if sr != self.SAMPLE_RATE:
             resampler = torchaudio.transforms.Resample(sr, self.SAMPLE_RATE)
@@ -225,7 +234,22 @@ class VGGSSDataset(Dataset):
             audio = self.eval_noise_tr(audio_file) if self.set_length != 0 else None
         image = self.image_transform(image_file) if self.use_image else None
 
-        out = {'images': image, 'audios': audio, 'bboxes': bboxes, 'labels': label, 'ids': file_id}
+        offscreen_audios = None
+        if not self.is_train:
+            all_classes = set(self.broad_classes_dict.keys())
+            same_class = get_key(self.broad_classes_dict, file_id)
+
+            if same_class == None:
+                print(file_id+".wav")
+
+            all_classes -= same_class
+
+            random_class = random.choice(sorted(all_classes))
+            random_file = random.choice(self.broad_classes_dict[random_class])
+
+            offscreen_audios = self.get_audio(None, random_file) if self.set_length != 0 else None
+
+        out = {'images': image, 'audios': audio, 'bboxes': bboxes, 'labels': label, 'ids': file_id, 'offscreen_audios': offscreen_audios}
         out = {key: value for key, value in out.items() if value is not None}
         return out
 

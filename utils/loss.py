@@ -92,14 +92,14 @@ def acl_f(v_f: torch.Tensor, pred_emb: torch.Tensor, beta: float = 1 / 0.07, **k
 
     return loss
 
-def silence_l(noise_n_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, **kwargs) -> torch.Tensor:
+def silence_l(noise_n_area: torch.Tensor, noise_p_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, **kwargs) -> torch.Tensor:
     loss = torch.zeros([]).to(v_f.device) # using here v_f only to get device since it should be guaranteed to exist
-    loss = torch.abs(noise_n_area - n_thr)
+    loss = torch.abs(noise_n_area + noise_p_area - n_thr)
     return loss
 
-def noise_l(sil_n_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, **kwargs) -> torch.Tensor:
+def noise_l(sil_n_area: torch.Tensor, sil_p_area: torch.Tensor, v_f: torch.Tensor, n_thr: float = 0.0, **kwargs) -> torch.Tensor:
     loss = torch.zeros([]).to(v_f.device)
-    loss = torch.abs(sil_n_area - n_thr)
+    loss = torch.abs(sil_n_area + sil_p_area - n_thr)
     return loss
 
 def diff_san_l(v_f: torch.Tensor, pred_emb: torch.Tensor, noisy_v_f: torch.Tensor, pred_emb_noisy: torch.Tensor, **kwargs) -> torch.Tensor:

@@ -267,3 +267,13 @@ def remove_diagonal(x: torch.Tensor) -> torch.Tensor:
     col_idx = col_idx[:, :, None, None].expand(B, B - 1, H, W)  # [B, B-1, H, W]
 
     return x.gather(1, col_idx)
+
+def get_key(dct, val):
+    list_keys = list(dct.keys())
+    list_classes = []
+    for key in list_keys:
+        values = dct[key]
+        if val in values:
+            list_classes.append(key)
+
+    return set(list_classes)

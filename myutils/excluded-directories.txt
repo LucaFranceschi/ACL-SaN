@@ -11,7 +11,7 @@
 
 .git
 old_outputs
-outputs
+outputs*
 pretrain
 Visual_results*
 Train_record*
