@@ -12,10 +12,8 @@ common:
     - acl_i
     - acl_f
     - area_reg
-    - silence_l
-    - noise_l
+    - diff_san_l
   loss_w:
-    - 1
     - 1
     - 1
     - 1
