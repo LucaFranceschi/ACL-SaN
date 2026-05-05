@@ -30,6 +30,7 @@ class Experiment(object):
         self.metrics = pd.DataFrame()
         self.infer_info = pd.DataFrame()
         self.loaded_dirs = []
+        self.thresholds = None
 
     def cleanup(self):
         global EXPERIMENTS
@@ -47,13 +48,22 @@ class Experiment(object):
     def load_eval_inference_info(self, path_to_numpy_dir):
         if path_to_numpy_dir not in self.loaded_dirs:
             self.infer_info = load_infer_info(path_to_numpy_dir, self.name)
-            # self.thresholds = get_thresholds(self.infer_info) # precision errors make this impossible
+
+            if self.thresholds is None:
+                self.thresholds = get_thresholds(path_to_numpy_dir)
+
             self.loaded_dirs.append(path_to_numpy_dir)
 
-    def print_metrics(self, epoch, thr, seg_item):
+    def _print_metrics(self, epoch, thr, seg_item):
         if self.thresholds and seg_item in self.thresholds[epoch] and thr in self.thresholds[epoch][seg_item]:
             thr = str(self.thresholds[epoch][seg_item][thr])
         print_metrics(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item)
+
+    def print_metrics(self, thr, seg_item):
+        if self.thresholds is None:
+            raise Exception('Load inference info first!!')
+        for i in sorted(self.thresholds.keys()):
+            self._print_metrics(i, thr=thr, seg_item=seg_item)
 
     def print_metrics_noisy(self, epoch, thr, seg_item):
         if self.thresholds and seg_item in self.thresholds[epoch] and thr in self.thresholds[epoch][seg_item]:

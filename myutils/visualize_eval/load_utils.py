@@ -1,4 +1,4 @@
-import re, os, gc
+import re, os, gc, json
 import pandas as pd
 import numpy as np
 
@@ -15,7 +15,7 @@ def get_metric(ss: str):
         return match.group(1)
 
 def get_audio_type(ss: str):
-    match = re.search(r'(positive|pos|silence|sil|noise|noi)', ss)
+    match = re.search(r'(positive|pos|silence|sil|noise|noi|offscreen|off)', ss)
     if match != None:
         return match.group(1)
 
@@ -29,7 +29,7 @@ def get_epoch(ss: str):
     if match != None:
         epoch = match.group(1)
         if epoch == 'best':
-            epoch = 20
+            return epoch
         return int(epoch)
 
 def get_snr(ss: str):
@@ -129,37 +129,48 @@ def load_infer_info(path, run_name):
 
     return df
 
-def get_thresholds(infer_info_df):
+# def get_thresholds(infer_info_df):
 
-    df = infer_info_df[(infer_info_df["dataset"] == 'vggss') &
-                       (infer_info_df["min_max"] == 'max')].copy()
+#     df = infer_info_df[(infer_info_df["dataset"] == 'vggss') &
+#                        (infer_info_df["min_max"] == 'max')].copy()
 
-    return_thresholds = {}
+#     return_thresholds = {}
 
-    for epoch in df['epoch'].unique():
-        df_epoch = df[df['epoch'] == epoch].copy()
+#     for epoch in df['epoch'].unique():
+#         df_epoch = df[df['epoch'] == epoch].copy()
 
-        return_thresholds[int(epoch)] = {}
-        for seg_item in df_epoch['seg_item'].unique():
+#         return_thresholds[int(epoch)] = {}
+#         for seg_item in df_epoch['seg_item'].unique():
 
-            pos_arr = df_epoch[(df_epoch['audio_type'] == 'pos') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
-            sil_arr = df_epoch[(df_epoch['audio_type'] == 'sil') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
-            noise_arr = df_epoch[(df_epoch['audio_type'] == 'noi') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
+#             pos_arr = df_epoch[(df_epoch['audio_type'] == 'pos') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
+#             sil_arr = df_epoch[(df_epoch['audio_type'] == 'sil') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
+#             noise_arr = df_epoch[(df_epoch['audio_type'] == 'noi') & (df_epoch['seg_item'] == seg_item)]['data'].to_numpy()
 
-            max_negatives = [list(sil_arr), list(noise_arr)]
-            max_negatives_separate = [np.percentile(list(sil_arr), 75), np.percentile(list(noise_arr), 75)]
+#             max_negatives = [list(sil_arr), list(noise_arr)]
+#             max_negatives_separate = [np.percentile(list(sil_arr), 75), np.percentile(list(noise_arr), 75)]
 
-            thresh_for_seg_item = {
-                'max_neg': np.mean(max_negatives),
-                'max_neg_plus_10': np.mean(max_negatives) * 1.1,
-                'max_q2_pos': np.percentile(list(pos_arr), 25),
-                'max_q3_all': np.percentile(max_negatives, 75),
-                'max_q3_separate': np.max(max_negatives_separate)
-            }
+#             thresh_for_seg_item = {
+#                 'max_neg': np.mean(max_negatives),
+#                 'max_neg_plus_10': np.mean(max_negatives) * 1.1,
+#                 'max_q2_pos': np.percentile(list(pos_arr), 25),
+#                 'max_q3_all': np.percentile(max_negatives, 75),
+#                 'max_q3_separate': np.max(max_negatives_separate)
+#             }
 
-            return_thresholds[int(epoch)][seg_item] = thresh_for_seg_item
+#             return_thresholds[int(epoch)][seg_item] = thresh_for_seg_item
 
-        del df_epoch, max_negatives, max_negatives_separate
-        gc.collect()
+#         del df_epoch, max_negatives, max_negatives_separate
+#         gc.collect()
 
-    return return_thresholds
+#     return return_thresholds
+
+def get_thresholds(path_to_thresholds):
+    thresholds_dict = {}
+    for file in os.listdir(path_to_thresholds):
+        if file.endswith('.json'):
+            with open(os.path.join(path_to_thresholds, file), 'r') as fp:
+                thresholds_dict[file] = json.load(fp)
+
+    thresholds_dict = {k: v for d in thresholds_dict.values() for k, v in d.items()}
+    thresholds_dict = {int(k) if isinstance(k, str) and k.isdigit() else k: v for k, v in thresholds_dict.items()}
+    return thresholds_dict
