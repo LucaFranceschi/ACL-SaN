@@ -75,7 +75,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
         num_workers=args.num_workers, pin_memory=False, drop_last=True, shuffle=False)
 
     # Get Test Dataloader (VGGSS)
-    vggss_dataset = VGGSSDataset(data_path_dict['vggss'], 'vggss_test_100', is_train=False,
+    vggss_dataset = VGGSSDataset(data_path_dict['vggss'], 'vggss_test', is_train=False,
                                  input_resolution=args.input_resolution)
     vggss_dataloader = torch.utils.data.DataLoader(vggss_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                    pin_memory=False, drop_last=True)
@@ -97,7 +97,7 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
                                                       pin_memory=False, drop_last=True)
 
     # Get Test Dataloader (AVS)
-    avss4_dataset = AVSBenchDataset(data_path_dict['avs'], 'avs1_s4_test_subset', is_train=False,
+    avss4_dataset = AVSBenchDataset(data_path_dict['avs'], 'avs1_s4_test', is_train=False,
                                     input_resolution=args.input_resolution)
     avss4_dataloader = torch.utils.data.DataLoader(avss4_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                    pin_memory=False, drop_last=True)
@@ -147,21 +147,21 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
         model.train(False)
 
         eval_avatar_agg(model, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
-              tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         result_dict = eval_vggss_agg(model, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         eval_avsbench_agg(model, avss4_dataloader, args, viz_dir_template.format('s4'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         eval_flickr_agg(model, flickr_dataloader, args, viz_dir_template.format('flickr'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         eval_exflickr_agg(model, exflickr_dataloader, args, viz_dir_template.format('exflickr'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         eval_avsbench_agg(model, avsms3_dataloader, args, viz_dir_template.format('ms3'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         eval_vggsound_agg(model, test_dataloader, args, viz_dir_template.format('vggsound_test'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         eval_exvggss_agg(model, exvggss_dataloader, args, viz_dir_template.format('exvggss'), epoch,
-            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[epoch])
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
 
         if result_dict['best_AUC'][0] > best_scores['best_AUC']['AUC']:
             best_scores['best_AUC']['epoch'] = epoch
@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    epochs = args.epochs.split(',')
+    epochs = [int(k) if isinstance(k, str) and k.isdigit() else k for k in args.epochs.split(',')]
 
     data_path = {'vggss': args.vggss_path,
                  'flickr': args.flickr_path,
