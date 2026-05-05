@@ -1021,7 +1021,7 @@ def eval_avsbench_agg(
                 writer.add_scalars(f'test/m_i_seg/off/avs/{test_split}({thr})', offscreen_metrics, epoch)
 
     for i, thr in enumerate(thrs_v_d):
-        std_metrics, silence_metrics, noise_metrics = evaluators_v_d[i].finalize()
+        std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_v_d[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split} with thr = {thr})\n'
         msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
