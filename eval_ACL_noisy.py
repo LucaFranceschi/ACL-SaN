@@ -1,0 +1,226 @@
+import torch
+import os
+import datetime
+
+import yaml
+import argparse
+
+from tqdm import tqdm
+import torch.distributed as dist
+from utils.util import get_prompt_template, fix_seed, seed_worker
+from datasets.VGGSS.VGGSS_Dataset import VGGSSDataset, ExtendVGGSSDataset
+from datasets.Flickr.Flickr_Dataset import FlickrDataset, ExtendFlickrDataset
+from datasets.AVSBench.AVSBench_Dataset import AVSBenchDataset
+from datasets.vggsound.VGGSound_Dataset import VGGSoundDataset
+from datasets.AVATAR.AVATAR_Dataset import AVATARDataset, AVATARDatasetOnlyOffscreen
+from importlib import import_module
+from utils.eval import *
+
+import numpy as np
+
+import re
+
+from datasets.silence_and_noise.silence_and_noise import get_silence_noise_audios
+
+import json
+
+@torch.no_grad()
+def main(model_name, model_path, train_config_name, data_path_dict, model_weights_path, save_path, path_to_thresholds, epochs):
+    if USE_DDP:
+        dist.init_process_group("nccl", timeout=datetime.timedelta(seconds=9000))
+        global rank
+        rank = dist.get_rank()
+        torch.cuda.set_device(rank)
+        world_size = dist.get_world_size()
+        print(f'World size: {world_size}') if rank == 0 else None
+    else:
+        rank = 0
+
+    device = torch.device('cuda', torch.cuda.current_device()) if USE_CUDA else torch.device('cpu')
+    print(f'Device: {device} is used\n')
+
+    model_exp_name = f'{model_name}_{train_config_name}' if train_config_name != "" else model_name
+
+    # if model path is single pth file, only one epoch with that path
+    match = re.search(r'Param_(.*).pth', model_weights_path)
+    if match:
+        epoch_dict = {match.group(1): model_weights_path}
+    else:
+        # otherwise use the model path to search .pth files stored during training and build epoch_dict
+        model_exp_name = os.listdir(os.path.join(model_weights_path, 'Train_record'))[0]
+        model_weights_names = os.listdir(os.path.join(model_weights_path, 'Train_record', model_exp_name))
+        epoch_dict = {}
+        for ss in model_weights_names:
+            mm = re.match(r'Param_(\d+).pth', ss)
+            if mm != None:
+                epoch_dict[int(mm.group(1))] = os.path.join(model_weights_path, 'Train_record', model_exp_name, ss)
+
+    print(f'Testing {train_config_name} and storing results in {save_path}')
+
+    ''' Get train configure '''
+    train_conf_file = f'./config/train/{train_config_name}.yaml'
+    with open(train_conf_file) as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+        args = argparse.Namespace(**config['common'])
+        args.optim = config['optim_conf'][config['optimizer']]
+
+    ''' Fix random seed'''
+    fix_seed(args.seed)
+
+    # distribute
+    epoch_dict = {k: epoch_dict[k] for k in epoch_dict.keys() if k in epochs}
+    epoch_dict = {k: epoch_dict[k] for k in sorted(epoch_dict.keys())[rank::NUM_GPUS]}
+
+    best_scores = {
+        'best_AUC': {'epoch': 0, 'AUC': 0.0, 'thr': 0.0},
+        'best_AUC_N_silence': {'epoch': 0, 'AUC': 0.0, 'thr': 0.0},
+        'best_AUC_N_noise': {'epoch': 0, 'AUC': 0.0, 'thr': 0.0}
+    }
+
+    thresholds_dict = {}
+    for file in os.listdir(path_to_thresholds):
+        if file.endswith('.json'):
+            with open(os.path.join(path_to_thresholds, file), 'r') as fp:
+                thresholds_dict[file] = json.load(fp)
+
+    thresholds_dict = {k: v for d in thresholds_dict.values() for k, v in d.items()}
+    for snr in [None, 20, 10, 5]:
+        # Get Test Dataloader (VGGSound)
+        test_dataset = VGGSoundDataset(data_path_dict['vggsound'], f'vggsound_test', is_train=False,
+            input_resolution=args.ground_truth_resolution, set_length=3, eval_snr=snr)
+
+        test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size,
+            num_workers=args.num_workers, pin_memory=False, drop_last=True, shuffle=False)
+
+        # Get Test Dataloader (VGGSS)
+        vggss_dataset = VGGSSDataset(data_path_dict['vggss'], 'vggss_test', is_train=False,
+                                    input_resolution=args.input_resolution, eval_snr=snr)
+        vggss_dataloader = torch.utils.data.DataLoader(vggss_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                    pin_memory=False, drop_last=True)
+
+        # Get Test Dataloader (Flickr)
+        flickr_dataset = FlickrDataset(data_path_dict['flickr'], 'flickr_test', is_train=False,
+                                    input_resolution=args.input_resolution, eval_snr=snr)
+        flickr_dataloader = torch.utils.data.DataLoader(flickr_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                        pin_memory=False, drop_last=True)
+
+        # Get Test Dataloader (Extended VGGSS)
+        exvggss_dataset = ExtendVGGSSDataset(data_path_dict['vggss'], input_resolution=args.input_resolution, eval_snr=snr)
+        exvggss_dataloader = torch.utils.data.DataLoader(exvggss_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                        pin_memory=False, drop_last=True)
+
+        # Get Test Dataloader (Extended Flickr)
+        exflickr_dataset = ExtendFlickrDataset(data_path_dict['flickr'], input_resolution=args.input_resolution, eval_snr=snr)
+        exflickr_dataloader = torch.utils.data.DataLoader(exflickr_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                        pin_memory=False, drop_last=True)
+
+        # Get Test Dataloader (AVS)
+        avss4_dataset = AVSBenchDataset(data_path_dict['avs'], 'avs1_s4_test', is_train=False,
+                                        input_resolution=args.input_resolution, eval_snr=snr)
+        avss4_dataloader = torch.utils.data.DataLoader(avss4_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                    pin_memory=False, drop_last=True)
+
+        avsms3_dataset = AVSBenchDataset(data_path_dict['avs'], 'avs1_ms3_test', is_train=False,
+                                        input_resolution=args.input_resolution, eval_snr=snr)
+        avsms3_dataloader = torch.utils.data.DataLoader(avsms3_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                        pin_memory=False, drop_last=True)
+
+        avatar_dataset = AVATARDataset(data_path_dict['avatar'], 'avatar_one', is_train=False, input_resolution=args.input_resolution, eval_snr=snr)
+        avatar_dataloader = torch.utils.data.DataLoader(avatar_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                        pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
+
+        avatar_dataset_off = AVATARDatasetOnlyOffscreen(data_path_dict['avatar'], 'avatar_off', is_train=False, input_resolution=args.input_resolution, eval_snr=snr)
+        avatar_dataloader_off = torch.utils.data.DataLoader(avatar_dataset_off, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                        pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
+
+        for epoch, weights_path in epoch_dict.items():
+            print(f'Testing epoch {epoch}: {weights_path}')
+
+            ''' Set logging dir '''
+            tensorboard_path = os.path.join(save_path, 'Test_record', model_exp_name, "tensorboard", f'epoch{epoch}')
+
+            viz_dir_template = os.path.join(save_path, 'Visual_results_test', '{}', model_exp_name, f'epoch{epoch}')
+
+            ''' Get model '''
+            model_conf_file = f'./config/model/{model_name}.yaml'
+            model = getattr(import_module('modules.models'), config['model'])(model_conf_file, device, model_path)
+            print(f"Model '{model.__class__.__name__}' with configure file '{model_name}' is loaded")
+            print(f"Loaded model details: {vars(model.args.model)}\n")
+
+            model.load(weights_path)
+            model.train(False)
+
+            eval_avatar_agg(model, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            eval_avatar_agg(model, avatar_dataloader_off, args, viz_dir_template.format('avatar'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            result_dict = eval_vggss_agg(model, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            eval_avsbench_agg(model, avss4_dataloader, args, viz_dir_template.format('s4'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            eval_flickr_agg(model, flickr_dataloader, args, viz_dir_template.format('flickr'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            eval_exflickr_agg(model, exflickr_dataloader, args, viz_dir_template.format('exflickr'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            eval_avsbench_agg(model, avsms3_dataloader, args, viz_dir_template.format('ms3'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            eval_vggsound_agg(model, test_dataloader, args, viz_dir_template.format('vggsound_test'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+            eval_exvggss_agg(model, exvggss_dataloader, args, viz_dir_template.format('exvggss'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
+
+            if result_dict['best_AUC'][0] > best_scores['best_AUC']['AUC']:
+                best_scores['best_AUC']['epoch'] = epoch
+                best_scores['best_AUC']['AUC'] = result_dict['best_AUC'][0]
+                best_scores['best_AUC']['thr'] = result_dict['best_AUC'][1]
+
+            if result_dict['best_AUC_silence'][0] > best_scores['best_AUC_N_silence']['AUC']:
+                best_scores['best_AUC_N_silence']['epoch'] = epoch
+                best_scores['best_AUC_N_silence']['AUC'] = result_dict['best_AUC_silence'][0]
+                best_scores['best_AUC_N_silence']['thr'] = result_dict['best_AUC_silence'][1]
+
+            if result_dict['best_AUC_noise'][0] > best_scores['best_AUC_N_noise']['AUC']:
+                best_scores['best_AUC_N_noise']['epoch'] = epoch
+                best_scores['best_AUC_N_noise']['AUC'] = result_dict['best_AUC_noise'][0]
+                best_scores['best_AUC_N_noise']['thr'] = result_dict['best_AUC_noise'][1]
+
+            if USE_DDP:
+                dist.barrier()
+
+    print(best_scores)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model_name', type=str, default='', help='Use model config file name')
+    parser.add_argument('--model_path', type=str, default='', help='Use model save path')
+    parser.add_argument('--model_weights', type=str, required=True, help='Path for model weights')
+    parser.add_argument('--train_config', type=str, default='', help='Use train config file name')
+    parser.add_argument('--save_path', type=str, default='', help='Save path for results')
+    parser.add_argument('--vggss_path', type=str, default='', help='VGGSS dataset directory')
+    parser.add_argument('--flickr_path', type=str, default='', help='Flickr dataset directory')
+    parser.add_argument('--avs_path', type=str, default='', help='AVSBench dataset directory')
+    parser.add_argument('--vggsound_path', type=str, default='', help='VGGSound dataset directory')
+    parser.add_argument('--avatar_path', type=str, default='', help='AVATAR dataset directory')
+    parser.add_argument('--san_path', type=str, default='', help='Silence and noise data directory')
+    parser.add_argument('--local_rank', type=str, default='', help='Rank for distributed train')
+    parser.add_argument('--path_to_thresholds', type=str, default='', help='')
+    parser.add_argument('--epochs', type=str, default='', help='')
+
+    args = parser.parse_args()
+
+    epochs = [int(k) if isinstance(k, str) and k.isdigit() else k for k in args.epochs.split(',')]
+
+    data_path = {'vggss': args.vggss_path,
+                 'flickr': args.flickr_path,
+                 'avs': args.avs_path,
+                 'vggsound': args.vggsound_path,
+                 'avatar': args.avatar_path,
+                 'san': args.san_path}
+
+    USE_CUDA = torch.cuda.is_available()
+
+    # Check the number of GPUs for training
+    NUM_GPUS = len(os.environ.get('CUDA_VISIBLE_DEVICES', '').split(','))
+    USE_DDP = True if NUM_GPUS > 1 else False
+
+    main(args.model_name, args.model_path, args.train_config, data_path, args.model_weights, args.save_path, args.path_to_thresholds, epochs)
