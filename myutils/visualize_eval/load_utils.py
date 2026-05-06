@@ -20,7 +20,7 @@ def get_audio_type(ss: str):
         return match.group(1)
 
 def get_dataset(ss: str):
-    match = re.search(r'(avs_ms3|avs_s4|ms3|s4|vggss|exvggss|vggsound|flickr|exflickr|avatar_one_bb|avatar_one_seg|avatar_one)', ss)
+    match = re.search(r'(avs_ms3|avs_s4|ms3|s4|vggss|exvggss|vggsound|flickr|exflickr|avatar_one_bb|avatar_one_seg|avatar_one|avatar_off_bb|avatar_off_seg|avatar_off)', ss)
     if match != None:
         return match.group(1)
 
