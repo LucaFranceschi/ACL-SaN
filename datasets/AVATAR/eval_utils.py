@@ -367,6 +367,7 @@ class Evaluator(object):
         self.finalize_AP50()
         self.finalize_means()
 
-        print(self.offscreen_metrics)
+        std_metrics_filtered = {k: v for k, v in self.std_metrics['metrics'].items() if v is not None}
+        offscreen_metrics_filtered = {k: v for k, v in self.offscreen_metrics['metrics'].items() if v is not None}
 
-        return self.std_metrics['metrics'], self.silence_metrics['metrics'], self.noise_metrics['metrics'], self.offscreen_metrics['metrics']
+        return std_metrics_filtered, self.silence_metrics['metrics'], self.noise_metrics['metrics'], offscreen_metrics_filtered

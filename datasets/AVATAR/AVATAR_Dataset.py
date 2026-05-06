@@ -85,7 +85,7 @@ class AVATARDataset(Dataset):
 
         self.file_list = set(subset).intersection(image_files)
         self.file_list = self.file_list - set(off_screen_files)
-        print(len(self.file_list), len(set(off_screen_files)))
+        # print(len(self.file_list), len(set(off_screen_files)))
         self.file_list = sorted(self.file_list)
         # print(f'Intersection of {len(audio_files)}a, {len(image_files)}i and {len(subset)}l is {len(self.file_list)}')
 
@@ -239,5 +239,146 @@ class AVATARDataset(Dataset):
         offscreen_audios = self.get_audio(None, random_file) if self.set_length != 0 else None
 
         out = {'images': image, 'audios': audio, 'gts': annotations, 'ids': file_id, 'offscreen_audios': offscreen_audios}
+        out = {key: value for key, value in out.items() if value is not None}
+        return out
+
+class AVATARDatasetOnlyOffscreen(AVATARDataset):
+
+    def __init__(self, data_path: str, split: str, is_train: bool = True, set_length: int = 8,
+                 input_resolution: int = 224, hard_aug: bool = False, noise_transform_train: bool = False,
+                 eval_snr = None):
+
+        super(AVATARDataset, self).__init__()
+
+        self.epoch = 0
+
+        self.SAMPLE_RATE = 16000
+        self.split = split
+        self.set_length = set_length
+        self.metadata_dir = os.path.join(data_path, 'metadata')
+        metadata_files = []
+        for dirname in os.listdir(self.metadata_dir):
+            if not os.path.isdir(os.path.join(self.metadata_dir, dirname)):
+                continue
+            for filename in os.listdir(os.path.join(self.metadata_dir, dirname)):
+                if filename.endswith('.json'):
+                    metadata_files.append(os.path.join(dirname, filename.split('.json')[0]))
+                    if self.split == 'avatar_one':
+                        break # only get one from each directory
+        metadata_files = set(metadata_files)
+
+        ''' Audio files '''
+        self.audio_path = os.path.join(data_path, 'audio')
+        audio_files = set([file.split('/')[0] for file in metadata_files if file.split('/')[0] + '.wav' in os.listdir(self.audio_path)])
+
+        ''' Image files '''
+        self.image_path = os.path.join(data_path, 'frames')
+        image_files = []
+        for dirname in os.listdir(self.image_path):
+            if not os.path.isdir(os.path.join(self.image_path, dirname)):
+                continue
+            for filename in os.listdir(os.path.join(self.image_path, dirname)):
+                if filename.endswith('.jpg'):
+                    image_files.append(os.path.join(dirname, filename.split('.jpg')[0]))
+        image_files = set(image_files)
+
+        ''' Ground truth '''
+        self.ground_truths = {}
+        for file in metadata_files:
+            gt = json.load(open(os.path.join(self.metadata_dir, file + '.json')))
+            self.ground_truths[file] = {k: gt[k] for k in ('original_width', 'original_height', 'annotations')}
+
+        off_screen_files = []
+        for key, val in self.ground_truths.items():
+            if val['annotations'][0]['task'] == "Off-Screen":
+                off_screen_files.append(key)
+
+        ''' Available files'''
+        subset = []
+        for file in metadata_files:
+            if file.split('/')[0] in audio_files:
+                subset.append(file)
+
+        self.file_list = sorted(
+            set(subset)
+            .intersection(image_files)
+            .intersection(off_screen_files)
+        )
+        print(len(self.file_list), len(off_screen_files))
+
+        ''' Transform '''
+        if is_train:
+            # since at.AddNoise is not a thing in torchaudio 0.13.0
+            if noise_transform_train:
+                self.audio_transform = RandomApply([
+                    AddRandomNoise()
+                ], 0.5)
+            else:
+                self.audio_transform = RandomApply([AddRandomNoise()], -1.0) # nothing essentially
+
+            self.image_transform = vt.Compose([
+                vt.Resize((int(input_resolution * 1.1), int(input_resolution * 1.1)), vt.InterpolationMode.BICUBIC),
+                vt.ToTensor(),
+                vt.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),  # CLIP
+                vt.RandomCrop((input_resolution, input_resolution)),
+                vt.RandomHorizontalFlip(),
+            ])
+            if hard_aug:
+                self.image_transform = vt.Compose([
+                    vt.RandomResizedCrop((input_resolution, input_resolution)),
+                    vt.RandomApply([vt.GaussianBlur(5, [.1, 2.])], p=0.8),
+                    # vt.RandomApply([vt.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+                    vt.RandomGrayscale(p=0.2),
+                    vt.ToTensor(),
+                    vt.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),  # CLIP
+                    vt.RandomHorizontalFlip(),
+                ])
+        else:
+            self.audio_transform = RandomApply([AddRandomNoise()], -1.0) # nothing essentially
+            self.image_transform = vt.Compose([
+                vt.Resize((input_resolution, input_resolution), vt.InterpolationMode.BICUBIC),
+                vt.ToTensor(),
+                vt.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),  # CLIP
+            ])
+
+        self.is_train = is_train
+        self.use_image = True
+        if input_resolution is None:
+            self.use_image = False
+
+        self.eval_noise_tr = None
+        if eval_snr != None:
+            self.eval_noise_tr = AddRandomNoise(snr=eval_snr)
+
+    def __getitem__(self, item: int) -> Dict[str, Union[torch.Tensor, torch.Tensor, Optional[torch.Tensor], str, str]]:
+        """
+        Get item from the dataset.
+
+        Args:
+            item (int): Index of the item.
+
+        Returns:
+            Dict[str, Union[torch.Tensor, torch.Tensor, Optinal[torch.Tensor], str, str]]: Data example
+        """
+
+        if item >= len(self.file_list):
+            raise IndexError(f"Index {item} out of range for dataset of size {len(self.file_list)}")
+
+        file_id = self.file_list[item]
+
+        ''' Load data '''
+        audio_file = self.get_audio(item) if self.set_length != 0 else None
+        image_file = self.get_image(item) if self.use_image else None
+
+        annotations = self.ground_truths[self.file_list[item]]
+
+        ''' Transform '''
+        if self.eval_noise_tr == None:
+            audio = self.audio_transform(audio_file) if self.set_length != 0 else None
+        else:
+            audio = self.eval_noise_tr(audio_file) if self.set_length != 0 else None
+        image = self.image_transform(image_file) if self.use_image else None
+
+        out = {'images': image, 'audios': audio, 'gts': annotations, 'ids': file_id, 'offscreen_audios': audio}
         out = {key: value for key, value in out.items() if value is not None}
         return out

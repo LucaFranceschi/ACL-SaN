@@ -1950,8 +1950,8 @@ def eval_avatar_agg(
         std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_m_i_seg[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr})\n'
-        msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
-        msg += f'{std_metrics["cIoU_ap50"]=}, {std_metrics["AUC"]=}, {std_metrics["cIoU_hat"]=}\n'
+        msg += f'{std_metrics.get("mIoU", None)=}, {std_metrics.get("Fmeasure", None)=}\n'
+        msg += f'{std_metrics.get("cIoU_ap50", None)=}, {std_metrics.get("AUC", None)=}, {std_metrics.get("cIoU_hat", None)=}\n'
 
         if tensorboard_path is not None and epoch is not None:
             writer.add_scalars(f'test/m_i_seg/pos{"_snr" + str(snr) if snr != None else ""}/avatar/{test_split}_seg({thr})', std_metrics, epoch)
@@ -1977,8 +1977,8 @@ def eval_avatar_agg(
         std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_m_i_bb[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_bb with thr = {thr})\n'
-        msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
-        msg += f'{std_metrics["cIoU_ap50"]=}, {std_metrics["AUC"]=}, {std_metrics["cIoU_hat"]=}\n'
+        msg += f'{std_metrics.get("mIoU", None)=}, {std_metrics.get("Fmeasure", None)=}\n'
+        msg += f'{std_metrics.get("cIoU_ap50", None)=}, {std_metrics.get("AUC", None)=}, {std_metrics.get("cIoU_hat", None)=}\n'
 
         if tensorboard_path is not None and epoch is not None:
             writer.add_scalars(f'test/m_i_seg/pos{"_snr" + str(snr) if snr != None else ""}/avatar/{test_split}_bb({thr})', std_metrics, epoch)
@@ -2005,8 +2005,8 @@ def eval_avatar_agg(
         std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_v_d_seg[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_seg with thr = {thr})\n'
-        msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
-        msg += f'{std_metrics["cIoU_ap50"]=}, {std_metrics["AUC"]=}, {std_metrics["cIoU_hat"]=}\n'
+        msg += f'{std_metrics.get("mIoU", None)=}, {std_metrics.get("Fmeasure", None)=}\n'
+        msg += f'{std_metrics.get("cIoU_ap50", None)=}, {std_metrics.get("AUC", None)=}, {std_metrics.get("cIoU_hat", None)=}\n'
 
         if tensorboard_path is not None and epoch is not None:
             writer.add_scalars(f'test/v_d_seg/pos{"_snr" + str(snr) if snr != None else ""}/avatar/{test_split}_seg({thr})', std_metrics, epoch)
@@ -2033,8 +2033,8 @@ def eval_avatar_agg(
         std_metrics, silence_metrics, noise_metrics, offscreen_metrics = evaluators_v_d_bb[i].finalize()
 
         msg += f'{model.__class__.__name__} ({test_split}_bb with thr = {thr})\n'
-        msg += f'{std_metrics["mIoU"]=}, {std_metrics["Fmeasure"]=}\n'
-        msg += f'{std_metrics["cIoU_ap50"]=}, {std_metrics["AUC"]=}, {std_metrics["cIoU_hat"]=}\n'
+        msg += f'{std_metrics.get("mIoU", None)=}, {std_metrics.get("Fmeasure", None)=}\n'
+        msg += f'{std_metrics.get("cIoU_ap50", None)=}, {std_metrics.get("AUC", None)=}, {std_metrics.get("cIoU_hat", None)=}\n'
 
         if tensorboard_path is not None and epoch is not None:
             writer.add_scalars(f'test/v_d_seg/pos{"_snr" + str(snr) if snr != None else ""}/avatar/{test_split}_bb({thr})', std_metrics, epoch)

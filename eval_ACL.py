@@ -12,7 +12,7 @@ from datasets.VGGSS.VGGSS_Dataset import VGGSSDataset, ExtendVGGSSDataset
 from datasets.Flickr.Flickr_Dataset import FlickrDataset, ExtendFlickrDataset
 from datasets.AVSBench.AVSBench_Dataset import AVSBenchDataset
 from datasets.vggsound.VGGSound_Dataset import VGGSoundDataset
-from datasets.AVATAR.AVATAR_Dataset import AVATARDataset
+from datasets.AVATAR.AVATAR_Dataset import AVATARDataset, AVATARDatasetOnlyOffscreen
 from importlib import import_module
 from utils.eval import *
 
@@ -74,29 +74,29 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size,
         num_workers=args.num_workers, pin_memory=False, drop_last=True, shuffle=False)
 
-    # Get Test Dataloader (VGGSS)
+    # # Get Test Dataloader (VGGSS)
     vggss_dataset = VGGSSDataset(data_path_dict['vggss'], 'vggss_test', is_train=False,
                                  input_resolution=args.input_resolution)
     vggss_dataloader = torch.utils.data.DataLoader(vggss_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                    pin_memory=False, drop_last=True)
 
-    # Get Test Dataloader (Flickr)
+    # # Get Test Dataloader (Flickr)
     flickr_dataset = FlickrDataset(data_path_dict['flickr'], 'flickr_test', is_train=False,
                                    input_resolution=args.input_resolution)
     flickr_dataloader = torch.utils.data.DataLoader(flickr_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                     pin_memory=False, drop_last=True)
 
-    # Get Test Dataloader (Extended VGGSS)
+    # # Get Test Dataloader (Extended VGGSS)
     exvggss_dataset = ExtendVGGSSDataset(data_path_dict['vggss'], input_resolution=args.input_resolution)
     exvggss_dataloader = torch.utils.data.DataLoader(exvggss_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                      pin_memory=False, drop_last=True)
 
-    # Get Test Dataloader (Extended Flickr)
+    # # Get Test Dataloader (Extended Flickr)
     exflickr_dataset = ExtendFlickrDataset(data_path_dict['flickr'], input_resolution=args.input_resolution)
     exflickr_dataloader = torch.utils.data.DataLoader(exflickr_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                       pin_memory=False, drop_last=True)
 
-    # Get Test Dataloader (AVS)
+    # # Get Test Dataloader (AVS)
     avss4_dataset = AVSBenchDataset(data_path_dict['avs'], 'avs1_s4_test', is_train=False,
                                     input_resolution=args.input_resolution)
     avss4_dataloader = torch.utils.data.DataLoader(avss4_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
@@ -109,6 +109,10 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
 
     avatar_dataset = AVATARDataset(data_path_dict['avatar'], 'avatar_one', is_train=False, input_resolution=args.input_resolution)
     avatar_dataloader = torch.utils.data.DataLoader(avatar_dataset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                                    pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
+
+    avatar_dataset_off = AVATARDatasetOnlyOffscreen(data_path_dict['avatar'], 'avatar_off', is_train=False, input_resolution=args.input_resolution)
+    avatar_dataloader_off = torch.utils.data.DataLoader(avatar_dataset_off, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                                     pin_memory=False, drop_last=True, collate_fn=avatar_collate_fn)
 
     # distribute
@@ -147,6 +151,8 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
         model.train(False)
 
         eval_avatar_agg(model, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
+            tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
+        eval_avatar_agg(model, avatar_dataloader_off, args, viz_dir_template.format('avatar'), epoch,
             tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
         result_dict = eval_vggss_agg(model, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
             tensorboard_path, data_path_dict, USE_CUDA, add_thresholds=thresholds_dict[str(epoch)])
