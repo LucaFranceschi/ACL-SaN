@@ -533,8 +533,7 @@ class ADCL(ACL):
 
     def encode_masked_vision(self, image: torch.Tensor, embedding: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, float, float]:
         """
-        Heavily inspired by:
-
+        Following procedure in:
         https://github.com/jinxiang-liu/SSL-TIE/blob/c49e6a94e4ed63bba864ba01e9138451ca1cc801/models/model.py#L57
         """
         tau = self.args.model.tau
@@ -606,3 +605,22 @@ class ADCL(ACL):
         out_dict = {**out_dict, 'heatmap': heatmap}
 
         return out_dict
+
+    def forward_module_eval(self, image: torch.Tensor, embedding: torch.Tensor, resolution: int = 224,
+                       force_comb: bool = False) -> torch.Tensor:
+        tau = self.args.model.tau
+        epsilon = self.args.model.epsilon
+
+        B, c, H, W = image.shape
+        v_d = self.av_grounder.get_pixels(image) # v^D: [B, c, h, w]
+
+        # similarity for (soft) positives
+        sim_i_i = self.audio_visual_sim(v_d, embedding, resolution) # A: [B, 1, H, W]
+        Pos_mask = self.m((sim_i_i - epsilon)/tau)
+
+        v_d_seg = (sim_i_i + 1) / 2 # rescale to range [0, 1] from [-1, 1]
+
+        return {
+            'v_d_seg': v_d_seg,
+            'm_i_seg': Pos_mask
+        }
