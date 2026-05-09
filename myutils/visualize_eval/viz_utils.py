@@ -21,11 +21,11 @@ COLOR_PALETTE = {
     'vggsound': '#7f7f7f',
 }
 
-def print_metrics(df, epoch, thr:str='0.5', seg_item='m_i'):
+def print_metrics(df, epoch, thr:str='0.5', seg_item='m_i', snr=False) -> pd.DataFrame | None:
     filtered_df = df[df['epoch'] == epoch].copy()
 
     if len(filtered_df) == 0:
-        return
+        return None
 
     filtered_df = filtered_df[
         (filtered_df['threshold'] == thr) &
@@ -39,16 +39,21 @@ def print_metrics(df, epoch, thr:str='0.5', seg_item='m_i'):
     # values: the numbers to fill the table
     pivot_df = filtered_df.pivot_table(
         index=['epoch', 'dataset'],
-        columns=['audio_type', 'metric'],
+        columns=['audio_type', 'metric'] if not snr else ['audio_type', 'snr', 'metric'],
         values='value',
     )
 
     # Define the desired order for each audio_type
-    # std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC', 'mIoU', 'Fmeasure']]
-    std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC']]
-    silence_cols = [('sil', m) for m in ['pIA_hat', 'AUC_N']]
-    noise_cols = [('noi', m) for m in ['pIA_hat', 'AUC_N']]
-    offscreen_cols = [('off', m) for m in ['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N']]
+    if not snr:
+        std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC']]
+        silence_cols = [('sil', m) for m in ['pIA_hat', 'AUC_N']]
+        noise_cols = [('noi', m) for m in ['pIA_hat', 'AUC_N']]
+        offscreen_cols = [('off', m) for m in ['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N']]
+    else:
+        std_cols = [('pos', s, m) for s in [-1, 5.0, 10.0, 20.0] for m in ['cIoU_hat', 'AUC']]
+        silence_cols = [('sil', -1, m) for m in ['pIA_hat', 'AUC_N']]
+        noise_cols = [('noi', -1, m) for m in ['pIA_hat', 'AUC_N']]
+        offscreen_cols = [('off', -1, m) for m in ['pIA_hat', 'AUC_N']]
 
     # Combine them into one ordered list
     target_columns = std_cols + silence_cols + noise_cols + offscreen_cols
@@ -56,19 +61,34 @@ def print_metrics(df, epoch, thr:str='0.5', seg_item='m_i'):
     # Reindex the columns to the new order
     # errors='ignore' ensures it doesn't crash if a specific metric is missing for one type
     pivot_df = pivot_df.reindex(columns=target_columns)
+    # Order datasets with avatar_one above avatar_off
+    custom_order = [
+        'avatar_one_bb', 'avatar_one_seg',
+        'avatar_off_bb', 'avatar_off_seg',
+        'avs_ms3', 'avs_s4', 'flickr', 'vggss', 'exflickr', 'exvggss'
+    ]
+
+    # Create a mapping for sorting
+    dataset_order = {ds: i for i, ds in enumerate(custom_order)}
+
+    # Sort by the 'dataset' level (level 1) using the custom order
+    pivot_df = pivot_df.reindex(
+        sorted(pivot_df.index, key=lambda x: dataset_order.get(x[1], 999))
+    )
 
     pd.options.display.float_format = "{:,.3f}".format
     pd.options.display.max_columns = None
     pd.options.display.max_rows = None
     pd.options.display.width = 1000 # Increased width to prevent wrapping
-    pivot_df.to_clipboard(header=True, sep='\t')
+    # pivot_df.to_clipboard(header=True, sep='\t')
 
-    print(pivot_df)
+    # print(pivot_df)
 
-    input() # to be able to copy-paste tables into sheets :)
+    # input() # to be able to copy-paste tables into sheets :)
 
     return pivot_df
 
+'''
 def print_metrics_noisy(df, epoch, thr:str='0.5', seg_item='m_i'):
 
     filtered_df = df[df['epoch'] == epoch].copy()
@@ -110,6 +130,7 @@ def print_metrics_noisy(df, epoch, thr:str='0.5', seg_item='m_i'):
 
     print(pivot_df)
     return pivot_df
+'''
 
 def print_runs(df, thr=0.5):
     filtered_df = df[

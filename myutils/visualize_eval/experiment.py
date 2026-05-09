@@ -54,21 +54,26 @@ class Experiment(object):
 
             self.loaded_dirs.append(path_to_numpy_dir)
 
-    def _print_metrics(self, epoch, thr, seg_item):
+    def _print_metrics(self, epoch, thr, seg_item, snr=False) -> pd.DataFrame | None:
         if self.thresholds and seg_item in self.thresholds[epoch] and thr in self.thresholds[epoch][seg_item]:
             thr = str(self.thresholds[epoch][seg_item][thr])
-        print_metrics(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item)
+        return print_metrics(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item, snr=snr)
 
-    def print_metrics(self, thr, seg_item):
+    def print_metrics(self, thr, seg_item, snr=False):
         if self.thresholds is None:
             raise Exception('Load inference info first!!')
+        df = None
         for i in sorted(self.thresholds.keys()):
-            self._print_metrics(i, thr=thr, seg_item=seg_item)
-
-    def print_metrics_noisy(self, epoch, thr, seg_item):
-        if self.thresholds and seg_item in self.thresholds[epoch] and thr in self.thresholds[epoch][seg_item]:
-            thr = str(self.thresholds[epoch][seg_item][thr])
-        print_metrics_noisy(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item)
+            pivot_df = self._print_metrics(i, thr=thr, seg_item=seg_item, snr=snr)
+            if pivot_df is not None:
+                if df is None:
+                    df = pivot_df
+                else:
+                    df = pd.concat([df, pivot_df])
+        if df is not None:
+            print(df)
+            df.to_clipboard(header=True, sep='\t')
+            df.to_latex(f'outputs/{self.name}/{seg_item}-{thr}.tex')
 
     def plot_all_metrics(self, epoch, thr, seg_item):
         plot_all_metrics(self.metrics[self.metrics['epoch'] == epoch], thr=thr, seg_item=seg_item, experiment_name=self.name, epoch=epoch)
