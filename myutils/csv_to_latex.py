@@ -42,6 +42,8 @@ def fmt(val, decimals):
         return "--"
     return f"{float(val):.{decimals}f}"
 
+def fmt_snr(val):
+    return r"$\infty$" if str(val) == "-1" else str(val)
 
 def wrap(val_str, rank):
     if rank == "best":   return rf"\textbf{{{val_str}}}"
@@ -149,7 +151,7 @@ def build_latex(df, decimals, label, criteria):
     highlights = compute_highlights(df, criteria)
 
     # ---- column-format string ----
-    col_fmt = "l" * N_INDEX_COLS + "r" * len(cols)
+    col_fmt = "l" * (N_INDEX_COLS + 1) + "r" * len(cols)
 
     # ---- header span info ----
     at_keys  = [c[0] for c in cols]
@@ -157,18 +159,19 @@ def build_latex(df, decimals, label, criteria):
 
     if n_levels >= 2:
         l0l1_keys = [(c[0], c[1]) for c in cols]
-        snr_spans = [(str(k[1]), len(list(g))) for k, g in groupby(l0l1_keys)]
+        snr_spans = [(fmt_snr(k[1]), len(list(g))) for k, g in groupby(l0l1_keys)]
 
     if n_levels >= 3:
         met_keys = [c[2] for c in cols]
 
     # start_col for cmidrule: after the N_INDEX_COLS leading columns
-    data_start = N_INDEX_COLS + 1
+    data_start = N_INDEX_COLS + 2
+    table_name = label.replace('_', r"\_")
 
     lines = []
     lines.append(r"\centering")
     lines.append(
-        r"\caption{Results. \textbf{Bold}: best per dataset; "
+        rf"\caption{{Results for {table_name}. \textbf{{Bold}}: best per dataset; "
         r"\textit{italic}: second best per dataset. `--' means not applicable.}"
     )
     lines.append(rf"\label{{tab:{label}}}")
@@ -177,23 +180,23 @@ def build_latex(df, decimals, label, criteria):
     lines.append(rf"\begin{{tabular}}{{{col_fmt}}}")
     lines.append(r"  \toprule")
 
-    # Header row 1: top-level audio_type spans
+    # Header row 1
     lines.append(
-        "  " + render_header_row(at_spans, ["Dataset", "Model", "Epoch"])
+        "  " + render_header_row(at_spans, [r"\textit{Audio type}", "Dataset", "Model", "Epoch"])
     )
-    lines.append(cmidrule_row(at_spans, start_col=data_start))
+    lines.append(cmidrule_row(at_spans, start_col=data_start))  # ← no +1
 
-    # Header row 2: snr spans
+    # Header row 2
     if n_levels >= 2:
         lines.append(
-            "  " + render_header_row(snr_spans, ["", "", ""])
-        )
-        lines.append(cmidrule_row(snr_spans, start_col=data_start))
+            "  " + render_header_row(snr_spans, [r"\textit{SNR (dB)}", "", "", ""])
+    )
+        lines.append(cmidrule_row(snr_spans, start_col=data_start))  # ← no +1
 
-    # Header row 3: metric names
+    # Header row 3: Metric
     if n_levels >= 3:
         met_row = (
-            " & ".join(["", "", ""] + [MET_PRETTY.get(m, m) for m in met_keys])
+            " & ".join([r"\textit{Metric}", "", "", ""] + [MET_PRETTY.get(m, m) for m in met_keys])
             + r" \\"
         )
         lines.append("  " + met_row)
@@ -228,7 +231,8 @@ def build_latex(df, decimals, label, criteria):
                 cells.append(wrap(fmt(val, decimals), rank))
 
             row_str = (
-                f"  {dataset_cell} & {model_tex} & {epoch_tex} & "
+                f"  & {dataset_cell} & {model_tex} & {epoch_tex} & "
+                #  ^^ blank for the label column
                 + " & ".join(cells)
                 + r" \\"
             )
