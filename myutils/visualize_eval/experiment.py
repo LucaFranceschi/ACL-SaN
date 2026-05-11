@@ -57,7 +57,12 @@ class Experiment(object):
     def _print_metrics(self, epoch, thr, seg_item, snr=False) -> pd.DataFrame | None:
         if self.thresholds and seg_item in self.thresholds[epoch] and thr in self.thresholds[epoch][seg_item]:
             thr = str(self.thresholds[epoch][seg_item][thr])
-        return print_metrics(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item, snr=snr)
+        df = print_metrics(self.metrics, epoch=epoch, thr=thr, seg_item=seg_item, snr=snr)
+        if df is not None:
+            df = df.reset_index()
+            df['model'] = self.name
+            df = df.set_index(['model', 'epoch', 'dataset'])
+        return df
 
     def print_metrics(self, thr, seg_item, snr=False):
         if self.thresholds is None:
@@ -73,7 +78,8 @@ class Experiment(object):
         if df is not None:
             print(df)
             df.to_clipboard(header=True, sep='\t')
-            df.to_latex(f'outputs/{self.name}/{seg_item}-{thr}.tex')
+            os.makedirs(f'outputs/{self.name}', exist_ok=True)
+            df.to_csv(f'outputs/{self.name}/{"noisy-" if snr else ""}{seg_item}-{thr}.csv')
 
     def plot_all_metrics(self, epoch, thr, seg_item):
         plot_all_metrics(self.metrics[self.metrics['epoch'] == epoch], thr=thr, seg_item=seg_item, experiment_name=self.name, epoch=epoch)
@@ -81,3 +87,34 @@ class Experiment(object):
     def boxplots_by_dataset(self, dataset_name, epochs, th_name, seg_item, min_max='max'):
         boxplots_by_dataset(self.infer_info, dataset_name, self.thresholds, epochs,
                             th_name=th_name, min_max=min_max, seg_item=seg_item, experiment_name=self.name)
+
+
+def print_all_metrics(experiments_epochs, thr, seg_item, snr=False):
+    '''
+    experiments_epochs = {
+        'ACL_baseline': ['best'],
+        'ACL_v1_B16': [17],
+        'ACL_v1_B32': [19],
+        'ACL_v2_B16': [16],
+        'ACL_v3_B16': [15],
+        'ACL_v4_B16': [18],
+        'ACL_v5_B16': [x],
+    }
+    '''
+    df = None
+    for exp_name, epoch_list in experiments_epochs.items():
+        exp = Experiment(exp_name)
+        if exp.thresholds is None:
+            raise Exception('Load inference info first!!')
+        for e in epoch_list:
+            pivot_df = exp._print_metrics(e, thr=thr, seg_item=seg_item, snr=snr)
+            if pivot_df is not None:
+                if df is None:
+                    df = pivot_df
+                else:
+                    df = pd.concat([df, pivot_df])
+    if df is not None:
+        df = df.reorder_levels(['dataset', 'model', 'epoch']).sort_index()
+        print(df)
+        df.to_clipboard(header=True, sep='\t')
+        df.to_csv((f'outputs/ACL-comp-{"noisy-" if snr else ""}{seg_item}-{thr}.csv'))
