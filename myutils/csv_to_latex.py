@@ -55,7 +55,7 @@ def wrap(val_str, rank):
 # Per-dataset ranking
 # ---------------------------------------------------------------------------
 
-def rank_within_dataset(series, higher=True):
+def rank_within_dataset(series, decimals, higher=True):
     """Return {row_label -> 'best' | 'second'} for one (dataset, metric) slice.
 
     *series* is a pd.Series whose index values are the model/epoch labels
@@ -65,10 +65,11 @@ def rank_within_dataset(series, higher=True):
     if numeric.empty:
         return {}
     unique_sorted = sorted(numeric.unique(), reverse=higher)
-    best_val   = unique_sorted[0]
-    second_val = unique_sorted[1] if len(unique_sorted) > 1 else None
+    best_val   = fmt(unique_sorted[0], decimals)
+    second_val = fmt(unique_sorted[1], decimals) if len(unique_sorted) > 1 else None
     result = {}
     for idx, v in numeric.items():
+        v = fmt(v, decimals)
         if v == best_val:
             result[idx] = "best"
         elif second_val is not None and v == second_val:
@@ -76,7 +77,7 @@ def rank_within_dataset(series, higher=True):
     return result
 
 
-def compute_highlights(df, criteria):
+def compute_highlights(df, criteria, decimals):
     """Return nested dict: highlights[dataset][col][model_key] -> rank str.
 
     *model_key* is the tuple (model, epoch) — the last two index levels.
@@ -92,7 +93,7 @@ def compute_highlights(df, criteria):
             metric = col[-1] if isinstance(col, tuple) else col
             higher = criteria.get(metric, "higher") == "higher"
             highlights[dataset][col] = rank_within_dataset(
-                grp_reindexed[col], higher=higher
+                grp_reindexed[col], decimals, higher=higher,
             )
     return highlights
 
@@ -148,7 +149,7 @@ def build_latex(df, decimals, label, criteria):
     cols     = list(df.columns)
     n_levels = df.columns.nlevels
 
-    highlights = compute_highlights(df, criteria)
+    highlights = compute_highlights(df, criteria, decimals)
 
     # ---- column-format string ----
     col_fmt = "l" * (N_INDEX_COLS + 1) + "r" * len(cols)
