@@ -1,7 +1,7 @@
 import torch
 import os
 import cv2
-
+import json
 import numpy as np
 
 from PIL import Image
@@ -626,10 +626,14 @@ def eval_vggss_agg(
     evaluators_m_i = [vggss_eval.Evaluator() for i in range(len(thrs_m_i))]
     evaluators_v_d = [vggss_eval.Evaluator() for i in range(len(thrs_v_d))]
 
+    frame_names = []
+
     for step, data in enumerate(tqdm(test_dataloader, desc=f"Evaluate VGG-SS dataset ({test_split})...")):
         images, audios, bboxes = data['images'], data['audios'], data['bboxes']
         labels, name = data['labels'], data['ids']
         offscreen_audios = data.get('offscreen_audios', None)
+
+        frame_names += name
 
         audio_embeddings = {}
 
@@ -733,6 +737,17 @@ def eval_vggss_agg(
     os.makedirs(result_dir, exist_ok=True)
     rst_path = os.path.join(f'{result_dir}/', 'test_rst.txt')
     msg = ''
+
+    with open(os.path.join(result_dir, 'frame_names.txt'), 'w') as fp:
+        json.dump(frame_names, fp)
+
+    for i, thr in enumerate(thrs_m_i):
+        if thr == add_thresholds['m_i']['max_q3_separate']:
+            with open(os.path.join(result_dir, 'pIAs_ordered_univ_m_i.txt'), 'w') as fp:
+                json.dump(evaluators_m_i[i].std_metrics['pIA'].tolist(), fp)
+
+            with open(os.path.join(result_dir, 'cIoUs_ordered_univ_m_i.txt'), 'w') as fp:
+                json.dump(evaluators_m_i[i].std_metrics['cIoU'].tolist(), fp)
 
     # Final result
     best_AUC = [0.0, 0.0]
