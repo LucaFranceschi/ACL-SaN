@@ -16,7 +16,7 @@ class Evaluator(object):
             metrics (List[str]): List of metric names.
         """
         super(Evaluator, self).__init__()
-        self.std_metrics = {}
+        self.std_metrics = {'pIA': [], 'metrics': {'AUC_N': None, 'pIA_ap50': None, 'pIA_hat': None}}
         self.silence_metrics = {'pIA': [], 'metrics': {'AUC_N': None, 'pIA_ap50': None, 'pIA_hat': None}}
         self.noise_metrics = {'pIA': [], 'metrics': {'AUC_N': None, 'pIA_ap50': None, 'pIA_hat': None}}
 
@@ -31,6 +31,8 @@ class Evaluator(object):
         Returns:
             None
         """
+
+        self._evaluate_batch(heatmap, 'pos', thr)
 
         sil_heatmap = kwargs.get('silence_heatmap', None)
         if sil_heatmap != None:
@@ -70,6 +72,8 @@ class Evaluator(object):
             self.silence_metrics['pIA'].append(pIA)
         elif metric == 'noise':
             self.noise_metrics['pIA'].append(pIA)
+        elif metric == 'pos':
+            self.std_metrics['pIA'].append(pIA)
         return
 
 
@@ -80,7 +84,7 @@ class Evaluator(object):
         Returns:
             float: AUC value.
         """
-        for metrics in [self.silence_metrics, self.noise_metrics]:
+        for metrics in [self.silence_metrics, self.noise_metrics, self.std_metrics]:
             if len(metrics['pIA']) > 0:
                 aucs = [np.sum(np.array(metrics['pIA']) < 0.05 * i) / len(metrics['pIA']) for i in range(21)]
                 thr = [0.05 * i for i in range(21)]
@@ -94,7 +98,7 @@ class Evaluator(object):
         Returns:
             float: pIA@0.5 value.
         """
-        for metrics in [self.silence_metrics, self.noise_metrics]:
+        for metrics in [self.silence_metrics, self.noise_metrics, self.std_metrics]:
             if len(metrics['pIA']) > 0:
                 ap50 = np.mean(np.array(metrics['pIA']) < 0.5)
                 metrics['metrics']['pIA_ap50'] = ap50
@@ -106,7 +110,7 @@ class Evaluator(object):
         Returns:
             float: Mean pIA value.
         """
-        for metrics in [self.silence_metrics, self.noise_metrics]:
+        for metrics in [self.silence_metrics, self.noise_metrics, self.std_metrics]:
             if len(metrics['pIA']) > 0:
                 pIA_hat = np.mean(np.array(metrics['pIA']))
                 metrics['metrics']['pIA_hat'] = pIA_hat
