@@ -686,30 +686,30 @@ def eval_vggss_agg(
             evaluators_v_d[i].evaluate_batch(**heatmaps_v_d, target=bboxes, thr=thr)
 
         # Visual results
-        # for j in range(test_dataloader.batch_size):
-        #     seg = heatmaps['heatmap'][j:j+1]
-        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        for j in range(test_dataloader.batch_size):
+            seg = heatmaps['heatmap'][j:j+1]
+            seg_image = (1 - (seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-        #     os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
-        #     cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
+            os.makedirs(f'{result_dir}/heatmap', exist_ok=True)
+            cv2.imwrite(f'{result_dir}/heatmap/{name[j]}.jpg', seg_image)
 
-        # for j in range(test_dataloader.batch_size):
-        #     seg = heatmaps_v_d['heatmap'][j:j+1]
-        #     seg_image = ((seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
+        for j in range(test_dataloader.batch_size):
+            seg = heatmaps_v_d['heatmap'][j:j+1]
+            seg_image = (1 - (seg.squeeze().detach().cpu().numpy()) * 255).astype(np.uint8)
 
-        #     os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
-        #     cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
+            os.makedirs(f'{result_dir}/heatmap_v_d', exist_ok=True)
+            cv2.imwrite(f'{result_dir}/heatmap_v_d/{name[j]}.jpg', seg_image)
 
         # Overall figure
-        # for j in range(test_dataloader.batch_size):
-        #     original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
-        #     gt_image = vt.ToPILImage()(bboxes[j]).resize(gt_resolution).point(lambda p: 255 - p)
-        #     heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
-        #     seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
-        #         lambda p: 0 if p / 255 < 0.5 else 255)
+        for j in range(test_dataloader.batch_size):
+            original_image = Image.open(os.path.join(test_dataloader.dataset.image_path, name[j] + '.jpg')).resize(gt_resolution)
+            gt_image = vt.ToPILImage()(bboxes[j]).resize(gt_resolution).point(lambda p: 255 - p)
+            heatmap_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution)
+            seg_image = Image.open(f'{result_dir}/heatmap/{name[j]}.jpg').resize(gt_resolution).point(
+                lambda p: 0 if p / 255 < 0.5 else 255)
 
-        #     draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
-        #     draw_overlaid(result_dir, original_image, heatmap_image, name[j])
+            draw_overall(result_dir, original_image, gt_image, heatmap_image, seg_image, labels[j], name[j])
+            draw_overlaid(result_dir, original_image, heatmap_image, name[j])
 
     if tensorboard_path is not None and epoch is not None:
         numpy_path = tensorboard_path.replace('tensorboard', 'numpy')
