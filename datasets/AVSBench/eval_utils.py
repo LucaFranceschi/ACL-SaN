@@ -21,12 +21,16 @@ class Evaluator(object):
             'mIoU': [],
             'F_values': [],
             'cIoU': [],
+            'pIA': [],
             'metrics': {
                 'AUC': None,
                 'cIoU_ap50': None,
                 'cIoU_hat': None,
                 'mIoU': None,
-                'Fmeasure': None
+                'Fmeasure': None,
+                'AUC_N': None,
+                'pIA_ap50': None,
+                'pIA_hat': None
             }
         }
 
@@ -102,13 +106,13 @@ class Evaluator(object):
 
             thrs.append(thr)
 
-            if metric in ('sil', 'noi'):
-                self.cal_pIA(pred, metric, thr)
-            elif metric == 'pos':
+            if metric == 'pos':
                 self.cal_CIOU(pred, target, metric, thr)
             elif metric == 'off':
-                self.cal_pIA(pred, metric, thr)
                 self.cal_CIOU(pred, target, metric, thr)
+
+            self.cal_pIA(pred, metric, thr)
+
 
         if metric in ['pos', 'off']:
             infers, gts = heatmap.squeeze(1), gt.squeeze(1)
@@ -158,6 +162,8 @@ class Evaluator(object):
             self.noise_metrics['pIA'].append(pIA)
         elif metric == 'off':
             self.offscreen_metrics['pIA'].append(pIA)
+        elif metric == 'pos':
+            self.std_metrics['pIA'].append(pIA)
         return
 
     def mask_iou(self, preds: torch.Tensor, targets: torch.Tensor, metric, thrs: List[float], eps: float = 1e-7) -> float:
@@ -312,7 +318,7 @@ class Evaluator(object):
                 auc = mt.auc(thr, cious)
                 metric['metrics']['AUC'] = auc
 
-        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics, self.std_metrics]:
             if len(metric['pIA']) > 0:
                 aucs = [np.sum(np.array(metric['pIA']) < 0.05 * i) / len(metric['pIA']) for i in range(21)]
                 thr = [0.05 * i for i in range(21)]
@@ -331,7 +337,7 @@ class Evaluator(object):
                 ap50 = np.mean(np.array(metric['cIoU']) >= 0.5)
                 metric['metrics']['cIoU_ap50'] = ap50
 
-        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics, self.std_metrics]:
             if len(metric['pIA']) > 0:
                 ap50 = np.mean(np.array(metric['pIA']) < 0.5)
                 metric['metrics']['pIA_ap50'] = ap50
@@ -348,7 +354,7 @@ class Evaluator(object):
                 ciou = np.mean(np.array(metric['cIoU']))
                 metric['metrics']['cIoU_hat'] = ciou
 
-        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.offscreen_metrics, self.std_metrics]:
             if len(metric['pIA']) > 0:
                 pia = np.mean(np.array(metric['pIA']))
                 metric['metrics']['pIA_hat'] = pia

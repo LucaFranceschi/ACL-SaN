@@ -150,11 +150,11 @@ def main(model_name, model_path, train_config_name, data_path_dict, model_weight
             model.load(weights_path)
             model.train(False)
 
+            result_dict = eval_vggss_agg(model, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
+                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
             eval_avatar_agg(model, avatar_dataloader, args, viz_dir_template.format('avatar'), epoch,
                 tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
             eval_avatar_agg(model, avatar_dataloader_off, args, viz_dir_template.format('avatar'), epoch,
-                tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
-            result_dict = eval_vggss_agg(model, vggss_dataloader, args, viz_dir_template.format('vggss'), epoch,
                 tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])
             eval_avsbench_agg(model, avss4_dataloader, args, viz_dir_template.format('s4'), epoch,
                 tensorboard_path, data_path_dict, USE_CUDA, snr=snr, add_thresholds=thresholds_dict[str(epoch)])

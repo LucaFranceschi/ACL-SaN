@@ -29,10 +29,14 @@ class Evaluator(object):
 
         self.std_metrics = {
             'cIoU': [],
+            'pIA': [],
             'metrics': {
                 'AUC': None,
                 'cIoU_ap50': None,
-                'cIoU_hat': None
+                'cIoU_hat': None,
+                'AUC_N': None,
+                'pIA_ap50': None,
+                'pIA_hat': None
             }
         }
         self.silence_metrics = {
@@ -245,10 +249,9 @@ class Evaluator(object):
 
             bb = 1 if label[i] != 'non-sounding' else 0
 
-            if metric in ('sil', 'noise'):
-                self.cal_pIA(pred, metric, thr)
-            else:
+            if metric == 'pos':
                 self.update(bb, gt[i], conf[i], pred, thr, name[i], metric)
+            self.cal_pIA(pred, metric, thr)
 
     def cal_pIA(self, infer: torch.Tensor, metric: str, thres: float = 0.01):
         '''
@@ -268,6 +271,8 @@ class Evaluator(object):
             self.silence_metrics['pIA'].append(pIA)
         elif metric == 'noise':
             self.noise_metrics['pIA'].append(pIA)
+        elif metric == 'pos':
+            self.std_metrics['pIA'].append(pIA)
         return
 
     def finalize_AUC(self):
@@ -285,7 +290,7 @@ class Evaluator(object):
                 auc = mt.auc(thr, cious)
                 metric['metrics']['AUC'] = auc
 
-        for metric in [self.silence_metrics, self.noise_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.std_metrics]:
             if len(metric['pIA']) > 0:
                 aucs = [np.sum(np.array(metric['pIA']) < 0.05 * i) / len(metric['pIA']) for i in range(21)]
                 thr = [0.05 * i for i in range(21)]
@@ -304,7 +309,7 @@ class Evaluator(object):
                 ap50 = np.mean(np.array(metric['cIoU']) >= 0.5)
                 metric['metrics']['cIoU_ap50'] = ap50
 
-        for metric in [self.silence_metrics, self.noise_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.std_metrics]:
             if len(metric['pIA']) > 0:
                 ap50 = np.mean(np.array(metric['pIA']) < 0.5)
                 metric['metrics']['pIA_ap50'] = ap50
@@ -321,7 +326,7 @@ class Evaluator(object):
                 ciou = np.mean(np.array(metric['cIoU']))
                 metric['metrics']['cIoU_hat'] = ciou
 
-        for metric in [self.silence_metrics, self.noise_metrics]:
+        for metric in [self.silence_metrics, self.noise_metrics, self.std_metrics]:
             if len(metric['pIA']) > 0:
                 pia = np.mean(np.array(metric['pIA']))
                 metric['metrics']['pIA_hat'] = pia
