@@ -1593,7 +1593,12 @@ def eval_exflickr_agg(
         # Calculate confidence value for extended dataset
         v_f = model.encode_masked_vision(images.to(model.device), audio_driven_embedding)[0]
         ind = torch.arange(test_dataloader.batch_size).to(images.device)
-        confs = torch.cosine_similarity(v_f[ind, ind, :], audio_driven_embedding)
+        v_f_sim = out_dict['positive'].get('v_f_sim', None)
+        if v_f_sim is not None: # this means that the model is ACL
+            confs = torch.cosine_similarity(v_f[ind, ind, :], audio_driven_embedding)
+        else:
+            print(v_f.shape)
+            confs = v_f[ind, ind]
 
         # Evaluation for all thresholds
         for i, thr in enumerate(thrs_m_i):

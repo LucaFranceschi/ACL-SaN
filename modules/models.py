@@ -221,7 +221,7 @@ class ACL(nn.Module):
         return logits # [B_i, B_e, h, w] or [B, h, w] depending on force_comb or other things
 
     def forward_module_eval(self, image: torch.Tensor, embedding: torch.Tensor, resolution: int = 224,
-                       force_comb: bool = False) -> torch.Tensor:
+                       force_comb: bool = False) -> dict[str, torch.Tensor]:
         '''
         Same spirit as forward_module but returns more things for evaluation purposes.
         '''
@@ -607,7 +607,7 @@ class ADCL(ACL):
         return out_dict
 
     def forward_module_eval(self, image: torch.Tensor, embedding: torch.Tensor, resolution: int = 224,
-                       force_comb: bool = False) -> torch.Tensor:
+                       force_comb: bool = False) -> dict[str, torch.Tensor]:
         tau = self.args.model.tau
         epsilon = self.args.model.epsilon
 
