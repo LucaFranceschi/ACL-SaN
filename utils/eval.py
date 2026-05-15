@@ -552,6 +552,13 @@ def eval_vggss_get_thresholds(
 
     return return_thresholds
 
+def to_serializable(val):
+    if isinstance(val, list):
+        return [to_serializable(v) for v in val]
+    if hasattr(val, 'tolist'):  # Tensor or numpy array
+        return val.tolist()
+    return val
+
 @torch.no_grad()
 def eval_vggss_agg(
     model: torch.nn.Module,
@@ -744,10 +751,10 @@ def eval_vggss_agg(
     for i, thr in enumerate(thrs_m_i):
         if thr == add_thresholds['m_i']['max_q3_separate']:
             with open(os.path.join(result_dir, 'pIAs_ordered_univ_m_i.txt'), 'w') as fp:
-                json.dump(evaluators_m_i[i].std_metrics['pIA'].tolist(), fp)
+                json.dump(to_serializable(evaluators_m_i[i].std_metrics['pIA']), fp)
 
             with open(os.path.join(result_dir, 'cIoUs_ordered_univ_m_i.txt'), 'w') as fp:
-                json.dump(evaluators_m_i[i].std_metrics['cIoU'].tolist(), fp)
+                json.dump(to_serializable(evaluators_m_i[i].std_metrics['cIoU']), fp)
 
     # Final result
     best_AUC = [0.0, 0.0]
