@@ -52,7 +52,7 @@ class Evaluator(object):
         Returns:
             None
         """
-        self._evaluate_batch(heatmap, 'std', thr, target)
+        self._evaluate_batch(heatmap, 'pos', thr, target)
 
         sil_heatmap = kwargs.get('silence_heatmap', None)
         if sil_heatmap != None:
@@ -97,7 +97,7 @@ class Evaluator(object):
         ciou = (infer_map * gtmap).sum(2).sum(1) / (gtmap.sum(2).sum(1) + (infer_map * (gtmap == 0)).sum(2).sum(1) + 1e-12)
         ciou = ciou.detach().cpu().float()
 
-        if metric == 'std':
+        if metric == 'pos':
             self.std_metrics['cIoU'].append(ciou)
         return
 

@@ -213,7 +213,7 @@ class Evaluator(object):
         area = gt.sum()
 
         # Save
-        if metric == 'std':
+        if metric == 'pos':
             self.std_metrics['cIoU'].append(ciou)
             # common variables
             self.confidence_list.append(conf)
@@ -223,7 +223,7 @@ class Evaluator(object):
         return
 
     def evaluate_batch(self, heatmap: torch.Tensor, gt: torch.Tensor, label, conf, name, thr = None, **kwargs) -> None:
-        self._evaluate_batch(heatmap, 'std', gt, label, conf, name, thr)
+        self._evaluate_batch(heatmap, 'pos', gt, label, conf, name, thr)
 
         sil_heatmap = kwargs.get('silence_heatmap', None)
         if sil_heatmap != None:
