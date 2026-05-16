@@ -745,16 +745,20 @@ def eval_vggss_agg(
     rst_path = os.path.join(f'{result_dir}/', 'test_rst.txt')
     msg = ''
 
-    with open(os.path.join(result_dir, 'frame_names.txt'), 'w') as fp:
-        json.dump(frame_names, fp)
+    if tensorboard_path is not None:
+        dumps_path = tensorboard_path.replace('tensorboard', 'dumps')
+        os.makedirs(dumps_path, exist_ok=True)
 
-    for i, thr in enumerate(thrs_m_i):
-        if thr == add_thresholds['m_i']['max_q3_separate']:
-            with open(os.path.join(result_dir, 'pIAs_ordered_univ_m_i.txt'), 'w') as fp:
-                json.dump(to_serializable(evaluators_m_i[i].std_metrics['pIA']), fp)
+        with open(os.path.join(dumps_path, 'frame_names.txt'), 'w') as fp:
+            json.dump(frame_names, fp)
 
-            with open(os.path.join(result_dir, 'cIoUs_ordered_univ_m_i.txt'), 'w') as fp:
-                json.dump(to_serializable(evaluators_m_i[i].std_metrics['cIoU']), fp)
+        for i, thr in enumerate(thrs_m_i):
+            if thr == add_thresholds['m_i']['max_q3_separate']:
+                with open(os.path.join(dumps_path, 'pIAs_ordered_univ_m_i.txt'), 'w') as fp:
+                    json.dump(to_serializable(evaluators_m_i[i].std_metrics['pIA']), fp)
+
+                with open(os.path.join(dumps_path, 'cIoUs_ordered_univ_m_i.txt'), 'w') as fp:
+                    json.dump(to_serializable(evaluators_m_i[i].std_metrics['cIoU']), fp)
 
     # Final result
     best_AUC = [0.0, 0.0]
