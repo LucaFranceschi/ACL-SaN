@@ -45,12 +45,12 @@ def print_metrics(df, epoch, thr:str='0.5', seg_item='m_i', snr=False) -> pd.Dat
 
     # Define the desired order for each audio_type
     if not snr:
-        std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC']]
+        std_cols = [('pos', m) for m in ['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N']]
         silence_cols = [('sil', m) for m in ['pIA_hat', 'AUC_N']]
         noise_cols = [('noi', m) for m in ['pIA_hat', 'AUC_N']]
         offscreen_cols = [('off', m) for m in ['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N']]
     else:
-        std_cols = [('pos', s, m) for s in [-1, 5.0, 10.0, 20.0] for m in ['cIoU_hat', 'AUC']]
+        std_cols = [('pos', s, m) for s in [-1, 20.0, 10.0, 5.0] for m in ['cIoU_hat', 'AUC', 'pIA_hat', 'AUC_N']]
         silence_cols = [('sil', -1, m) for m in ['pIA_hat', 'AUC_N']]
         noise_cols = [('noi', -1, m) for m in ['pIA_hat', 'AUC_N']]
         offscreen_cols = [('off', -1, m) for m in ['pIA_hat', 'AUC_N']]

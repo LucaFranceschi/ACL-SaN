@@ -114,6 +114,7 @@ def render_header_row(spans, leading_cells):
     """
     parts = list(leading_cells)
     for label, n in spans:
+        label = label.replace('_', r'\_')
         if n == 1:
             parts.append(str(label))
         else:
@@ -137,7 +138,8 @@ def cmidrule_row(spans, start_col):
 MET_PRETTY = {
     "cIoU_hat": r"$\overline{cIoU}$",
     "pIA_hat":  r"$\overline{pIA}$",
-    "AUC_N":    r"AUC$_N$",
+    "AUC_N":    r"$AUC_N$",
+    "AUC":    r"$AUC$",
 }
 
 # Number of leading index columns shown in the table:
@@ -158,21 +160,20 @@ def build_latex(df, decimals, label, criteria):
     at_keys  = [c[0] for c in cols]
     at_spans = multicolumn_spans(at_keys)
 
-    if n_levels >= 2:
+    if n_levels >= 3:  # SNR exists only with 3+ levels
         l0l1_keys = [(c[0], c[1]) for c in cols]
         snr_spans = [(fmt_snr(k[1]), len(list(g))) for k, g in groupby(l0l1_keys)]
 
-    if n_levels >= 3:
-        met_keys = [c[2] for c in cols]
+    # Metrics are always at the last level
+    met_keys = [c[n_levels - 1] for c in cols]
 
     # start_col for cmidrule: after the N_INDEX_COLS leading columns
     data_start = N_INDEX_COLS + 2
-    table_name = label.replace('_', r"\_")
 
     lines = []
     lines.append(r"\centering")
     lines.append(
-        rf"\caption{{Results for {table_name}. \textbf{{Bold}}: best per dataset; "
+        rf"\caption{{Results for {label}. \textbf{{Bold}}: best per dataset; "
         r"\textit{italic}: second best per dataset. `--' means not applicable.}"
     )
     lines.append(rf"\label{{tab:{label}}}")
@@ -187,15 +188,15 @@ def build_latex(df, decimals, label, criteria):
     )
     lines.append(cmidrule_row(at_spans, start_col=data_start))  # ← no +1
 
-    # Header row 2
-    if n_levels >= 2:
+    # Header row 2: SNR (only if 3+ levels)
+    if n_levels >= 3:
         lines.append(
             "  " + render_header_row(snr_spans, [r"\textit{SNR (dB)}", "", "", ""])
-    )
+        )
         lines.append(cmidrule_row(snr_spans, start_col=data_start))  # ← no +1
 
-    # Header row 3: Metric
-    if n_levels >= 3:
+    # Header row 3 (or row 2 if no SNR): Metric
+    if n_levels >= 2:
         met_row = (
             " & ".join([r"\textit{Metric}", "", "", ""] + [MET_PRETTY.get(m, m) for m in met_keys])
             + r" \\"
