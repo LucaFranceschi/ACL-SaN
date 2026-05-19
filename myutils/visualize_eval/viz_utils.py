@@ -375,7 +375,7 @@ def boxplots_by_dataset_compare(
 
     fig, axs = plt.subplots(nrows=1, ncols=N, sharey=True, figsize=(1.5*N, 4))
 
-    hue_order = ["pos", "sil", "noi"]
+    hue_order = ["pos", "sil", "noi", "off"]
     palette = sns.color_palette('pastel', n_colors=len(hue_order))
 
     for i in range(N):
@@ -399,13 +399,19 @@ def boxplots_by_dataset_compare(
             legend=False
         )
 
-        ax.set_title(f"{list_of_experiments[i].name}@{list_of_epochs[i]}", fontsize=12)
+        ax.set_title(f"{list_of_experiments[i].name.strip('ACL_')}@{list_of_epochs[i]}", fontsize=12)
         ax.set_ylim([0, 1])
 
-        th_value = list_of_experiments[i].thresholds.get(int(list_of_epochs[i]), {}).get(seg_item, {}).get(th_name)
+        ep = list_of_epochs[i]
+        try:
+            ep = int(list_of_epochs[i])
+        except:
+            pass
+
+        th_value = list_of_experiments[i].thresholds.get(ep, {}).get(seg_item, {}).get(th_name)
         if th_value is not None:
             ax.axhline(float(th_value), color='crimson', linestyle='--', linewidth=1.5)
-            ax.text(0.5, 1.02, f'Thr={float(th_value):.3f}', transform=ax.transAxes, ha='center', va='bottom', fontsize=10, fontweight='bold', color='crimson')
+            ax.text(0.5, -0.07, f'Thr={float(th_value):.3f}', transform=ax.transAxes, ha='center', va='bottom', fontsize=10, fontweight='bold', color='crimson')
 
     legend_elements = [Patch(facecolor=palette[i], label=hue_order[i]) for i in range(len(hue_order))]
     legend_elements.append(Line2D([0], [0], color='crimson', linestyle='--', linewidth=1.5, label=th_name))
@@ -413,15 +419,8 @@ def boxplots_by_dataset_compare(
     fig.legend(
         handles=legend_elements,
         loc='lower center',
-        bbox_to_anchor=(0.5, -0.05),
-        ncol=4,
+        bbox_to_anchor=(0.5, -0.1),
+        ncol=5,
         frameon=False
     )
-
-    # Add global title
-    fig.suptitle(f'{dataset_name} ({seg_item} - {min_max})', fontsize=14, fontweight='bold')
-
-    plt.tight_layout()
-    os.makedirs(f'outputs/{experiment_name}', exist_ok=True)
-    fig.savefig(f"outputs/{int(datetime.timestamp(datetime.now()))}.png", bbox_inches='tight', dpi=300)
-    plt.show()
+    return fig
