@@ -17,10 +17,10 @@ mkdir -p $SAVE_PATH
 
 set -a; source config/.env; set +a
 
-# python -m torch.distributed.launch --nnodes=1 --nproc_per_node=2 --master_port 12345 \
-python \
+# python \
+python -m torch.distributed.launch --nnodes=1 --nproc_per_node=2 --master_port 12345 \
 train_ACL.py \
---model_name ADCL_ViT16 \
+--model_name ADCL_ViT16-v2 \
 --model_path $REPO/pretrain \
 --exp_name aclifa_2gpu \
 --train_config $EXPERIMENT_VERSION \

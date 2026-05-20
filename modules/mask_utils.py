@@ -142,3 +142,29 @@ class FeatureMasker(nn.Module):
             torch.Tensor: Generated mask.
         """
         return torch.sigmoid((norm_img_tensor(x) - self.thr) / self.tau)
+
+class TrainableADCLSigmoid(nn.Module):
+    def __init__(self, init_epsilon: float = 0.65, init_epsilon2: float = 0.4, init_tau: float = 0.03, learnable = True):
+        super().__init__()
+        self.init_epsilon = init_epsilon
+        self.init_epsilon2 = init_epsilon2
+        self.init_tau = init_tau
+        self.learnable = learnable
+
+        assert not ((init_epsilon is None) ^ (init_epsilon2 is None) ^ (init_tau is None))
+        if learnable:
+            self.epsilon = nn.Parameter(torch.full([], float(init_epsilon)))
+            self.epsilon2 = nn.Parameter(torch.full([], float(init_epsilon2)))
+            self.tau = nn.Parameter(torch.full([], float(init_tau)))
+        else:
+            self.epsilon = init_epsilon
+            self.epsilon2 = init_epsilon2
+            self.tau = init_tau
+
+    def forward(self, x, epsilon = True):
+        if epsilon:
+            output = torch.sigmoid((x - self.epsilon) / self.tau)
+        else:
+            output = torch.sigmoid((x - self.epsilon2) / self.tau)
+
+        return output
